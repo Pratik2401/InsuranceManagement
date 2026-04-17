@@ -1,0 +1,13 @@
+/* ═══════════════════════════════════════════════════════
+   login.css — Styles specific to the Login page
+═══════════════════════════════════════════════════════ */
+
+/* Login page has no page-specific overrides beyond auth.css
+   Add any login-only styles here as needed */
+
+/* Example: tighter card on very small screens */
+@media (max-width: 380px) {
+  .auth-card {
+    padding: 1.75rem 1.25rem;
+  }
+}

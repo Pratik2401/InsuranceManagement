@@ -1,0 +1,62 @@
+/* ═══════════════════════════════════════════════════════
+   register.css — Styles specific to the Register page
+═══════════════════════════════════════════════════════ */
+
+/* Role selector */
+.auth-role-group {
+  display: flex;
+  gap: 0.75rem;
+}
+.auth-role-option {
+  flex: 1;
+  cursor: pointer;
+}
+.auth-role-radio {
+  display: none;
+}
+.auth-role-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  border-radius: 0.625rem;
+  border: 1px solid rgba(70, 69, 85, 0.4);
+  background: #0c0e14;
+  color: #c7c4d8;
+  font-size: 0.82rem;
+  font-weight: 500;
+  transition: all 0.2s;
+  cursor: pointer;
+  user-select: none;
+}
+.auth-role-radio:checked + .auth-role-label {
+  border-color: #c3c0ff;
+  background: rgba(195, 192, 255, 0.08);
+  color: #c3c0ff;
+  box-shadow: 0 0 0 3px rgba(195, 192, 255, 0.1);
+}
+
+/* Password strength meter */
+.auth-strength {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+.auth-strength-bars {
+  display: flex;
+  gap: 3px;
+  flex: 1;
+}
+.auth-strength-bar {
+  height: 3px;
+  flex: 1;
+  border-radius: 999px;
+  transition: background 0.3s;
+}
+.auth-strength-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  min-width: 64px;
+  text-align: right;
+}

@@ -1,0 +1,374 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap');
+
+/* ─── Reset & Base ─── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background-color: #111319 !important; /* surface_dim */
+  color: #e2e2eb !important; /* on_surface */
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Manrope', sans-serif;
+}
+
+/* ─── Typography Utility ─── */
+.text-brand { color: #c3c0ff !important; }
+.bg-brand { background: #4F46E5 !important; }
+.text-muted-custom { color: #c7c4d8 !important; } /* on_surface_variant */
+
+/* ─── Layout Shell ─── */
+.layout-shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* ─── Sidebar ─── */
+.sidebar {
+  width: 260px;
+  min-height: 100vh;
+  background-color: #191b22; /* surface_container_low */
+  border-right: none;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  z-index: 100;
+}
+
+/* Mobile sidebar (off-canvas) */
+@media (max-width: 991.98px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100%;
+    transform: translateX(-100%);
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 1050;
+    background-color: rgba(25, 27, 34, 0.85); /* Glass effect from Stitch */
+    backdrop-filter: blur(24px);
+  }
+  .sidebar.open {
+    transform: translateX(0);
+  }
+}
+
+/* ─── Overlay (mobile only) ─── */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1040;
+}
+.sidebar-overlay.visible {
+  display: block;
+}
+
+/* ─── Main area ─── */
+.main-area {
+  flex: 1;
+  min-width: 0; /* Prevents flex children from overflowing horizontally */
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── Topbar ─── */
+.topbar {
+  height: 64px;
+  background-color: #111319;
+  border-bottom: 1px solid rgba(70, 69, 85, 0.15); /* outline_variant ghost border */
+  display: flex;
+  align-items: center;
+  padding: 0 1.5rem;
+  gap: 1rem;
+  position: sticky;
+  top: 0;
+  z-index: 90;
+  flex-shrink: 0;
+}
+
+/* ─── Sidebar logo ─── */
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 1.25rem 1rem;
+  border-bottom: 1px solid rgba(70, 69, 85, 0.15);
+  flex-shrink: 0;
+}
+
+.sidebar-logo-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #c3c0ff 0%, #4F46E5 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+/* ─── Nav links ─── */
+.sidebar-nav {
+  padding: 0.75rem 0.6rem;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.nav-section-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #c7c4d8;
+  padding: 0 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.5rem;
+  color: #e2e2eb;
+  text-decoration: none;
+  font-size: 0.855rem;
+  font-weight: 500;
+  transition: all 0.2s;
+  margin-bottom: 2px;
+  position: relative;
+}
+
+.sidebar-link:hover {
+  background: #1e1f26; /* surface_container */
+}
+
+.sidebar-link.active {
+  color: #c3c0ff; /* primary */
+  font-weight: 600;
+}
+
+.sidebar-link.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: #c3c0ff;
+}
+
+.sidebar-link svg {
+  flex-shrink: 0;
+  color: inherit;
+}
+
+/* ─── Page Content ─── */
+.page-content {
+  flex: 1;
+  padding: 1.5rem;
+  min-width: 0; /* Critical for chart responsiveness on mobile */
+  overflow-x: hidden;
+}
+
+@media (max-width: 575.98px) {
+  .page-content {
+    padding: 1rem 0.75rem; /* Tighter padding for mobile */
+  }
+}
+
+/* ─── Dash Cards (Sovereign Ledger Style) ─── */
+.dash-card {
+  background-color: #1e1f26; /* surface_container */
+  border-radius: 1rem;
+  padding: 1.25rem;
+  box-shadow: none;
+  border: none;
+}
+
+/* Layering logic, as requested by Stitch design */
+.dash-card-elevated {
+  background-color: #282a30; /* surface_container_high */
+}
+
+/* Responsive padding for inner cards */
+@media (max-width: 575.98px) {
+  .dash-card {
+    padding: 1rem;
+    border-radius: 0.875rem;
+  }
+}
+
+/* Chart Container Fixes */
+.chart-container-wrapper {
+  width: 100%;
+  min-width: 0; 
+  overflow: hidden;
+}
+
+/* ─── Stat badge ─── */
+.stat-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border-radius: 0.35rem;
+  padding: 0.25rem 0.5rem;
+}
+
+/* ─── Custom Table (Scrollable on Mobile) ─── */
+.table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table-custom {
+  color: #e2e2eb !important;
+  margin-bottom: 0 !important;
+  white-space: nowrap; /* Prevents ugly text wrapping on mobile */
+}
+.table-custom thead th {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #c7c4d8 !important;
+  background: transparent !important;
+  border-bottom: 1px solid rgba(70, 69, 85, 0.2) !important;
+  padding-bottom: 0.75rem;
+}
+.table-custom tbody td {
+  border-color: rgba(70, 69, 85, 0.1) !important;
+  vertical-align: middle;
+  background: transparent !important;
+  padding: 0.75rem 0.5rem;
+}
+
+/* ─── Search input ─── */
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: #0c0e14; /* surface_container_lowest */
+  border-radius: 0.5rem;
+  padding: 0.6rem 0.85rem;
+  transition: background 0.2s;
+}
+.search-box:focus-within {
+  background: #282a30; /* surface_container_high */
+  box-shadow: 0 0 0 1px #c3c0ff; /* subtle primary glow */
+}
+.search-box input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #e2e2eb;
+  font-size: 0.855rem;
+  width: 100%;
+}
+
+/* ─── Avatar ─── */
+.topbar-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #c3c0ff, #4F46E5);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-family: 'Manrope', sans-serif;
+}
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #464555; border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: #918fa1; }
+
+/* ─── Sortable Table Headers ─── */
+.sortable-th {
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s ease;
+}
+.sortable-th:hover {
+  color: #e2e2eb !important;
+}
+
+/* ─── Pagination ─── */
+.pagination-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid rgba(70, 69, 85, 0.15);
+  margin-top: 1rem;
+}
+.pagination-info {
+  font-size: 0.78rem;
+  color: #c7c4d8;
+}
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.btn-page {
+  background: transparent;
+  border: 1px solid transparent;
+  color: #c7c4d8;
+  font-size: 0.8rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 0.4rem;
+  border-radius: 0.35rem;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+.btn-page:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+  color: #e2e2eb;
+}
+.btn-page.active {
+  background: #4F46E5;
+  color: #fff;
+  border-color: #4F46E5;
+  font-weight: 600;
+}
+.btn-page:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+
