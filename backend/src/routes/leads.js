@@ -29,4 +29,72 @@ router.post('/', async (req, res) => {
   }
 });
 
+// POST bulk leads
+router.post('/bulk', async (req, res) => {
+  try {
+    const leads = req.body; // Expecting an array of objects
+    if (!Array.isArray(leads) || leads.length === 0) {
+      return res.status(400).json({ message: 'Invalid or empty leads array.' });
+    }
+
+    const insertQuery = `
+      INSERT INTO leads (name, phone, product, status, date)
+      VALUES ?
+    `;
+
+    const values = leads.map(lead => [
+      lead.name, 
+      lead.phone, 
+      lead.product, 
+      lead.status || 'Active', 
+      lead.date || new Date().toISOString().split('T')[0]
+    ]);
+
+    const [result] = await pool.query(insertQuery, [values]);
+    res.status(201).json({ message: 'Leads imported successfully', count: result.affectedRows });
+  } catch (error) {
+    console.error('Error bulk creating leads:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// PUT update a lead
+router.put('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, phone, product, status, date } = req.body;
+    
+    const updateQuery = `
+      UPDATE leads 
+      SET name = ?, phone = ?, product = ?, status = ?, date = ?
+      WHERE id = ?
+    `;
+    const [result] = await pool.query(updateQuery, [name, phone, product, status, date, id]);
+    
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: 'Lead not found' });
+    }
+    res.json({ id, name, phone, product, status, date });
+  } catch (error) {
+    console.error('Error updating lead:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// DELETE a lead
+router.delete('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [result] = await pool.query('DELETE FROM leads WHERE id = ?', [id]);
+    
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: 'Lead not found' });
+    }
+    res.json({ message: 'Lead deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting lead:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
 module.exports = router;

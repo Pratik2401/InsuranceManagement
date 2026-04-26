@@ -2,28 +2,11 @@
 
 import React, { useState, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { Users, UserPlus, UserCheck, UserX, Search, ChevronsUpDown, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Users, UserPlus, UserCheck, UserX, Search, ChevronsUpDown, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Plus, Edit2, Trash2, X } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { ExportDropdown, ImportExcelButton } from '@/components/DataMobility';
 
-const monthLeads = [
-  { month: 'Jan', Generated: 120, Converted: 45, Lost: 20 },
-  { month: 'Feb', Generated: 145, Converted: 55, Lost: 25 },
-  { month: 'Mar', Generated: 160, Converted: 70, Lost: 15 },
-  { month: 'Apr', Generated: 110, Converted: 48, Lost: 10 },
-];
-
-const latestLeads = [
-  { id: 1, name: 'Rahul Verma', phone: '+91 98765 43210', product: 'Motor Comprehensive', date: '14 Apr 2025', status: 'Converted' },
-  { id: 2, name: 'Neha Sharma', phone: '+91 87654 32109', product: 'Family Floater', date: '13 Apr 2025', status: 'Active' },
-  { id: 3, name: 'Sameer Khan', phone: '+91 76543 21098', product: 'Term Life', date: '12 Apr 2025', status: 'Active' },
-  { id: 4, name: 'Anjali Gupta', phone: '+91 65432 10987', product: 'Home Insurance', date: '10 Apr 2025', status: 'Lost' },
-  { id: 5, name: 'Vikram Singh', phone: '+91 54321 09876', product: 'Health Individual', date: '08 Apr 2025', status: 'Converted' },
-  { id: 6, name: 'Pooja Iyer', phone: '+91 91234 56780', product: 'Motor Third Party', date: '05 Apr 2025', status: 'Active' },
-  { id: 7, name: 'Karan Patel', phone: '+91 99887 76655', product: 'Fire & Burglary', date: '04 Apr 2025', status: 'Converted' },
-  { id: 8, name: 'Sonia Desai', phone: '+91 88776 65544', product: 'Marine Cargo', date: '03 Apr 2025', status: 'Lost' },
-  { id: 9, name: 'Raj Kumar', phone: '+91 77665 54433', product: 'Motor Comprehensive', date: '02 Apr 2025', status: 'Active' },
-  { id: 10, name: 'Priya Mehta', phone: '+91 66554 43322', product: 'Endowment Plan', date: '01 Apr 2025', status: 'Converted' },
-];
+import api from '@/lib/axios';
 
 const statusBadge: Record<string, string> = {
   Converted: 'bg-success bg-opacity-10 text-success',
@@ -34,12 +17,20 @@ const statusBadge: Record<string, string> = {
 type SortKey = 'name' | 'phone' | 'product' | 'date' | 'status';
 
 export default function LeadsPage() {
-  const current = monthLeads[monthLeads.length - 1];
-  const active = current.Generated - current.Converted - current.Lost;
+  const [dataList, setDataList] = useState<any[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const [dataList, setDataList] = useState(latestLeads);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
+
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalLead, setModalLead] = useState<any>(null);
+
+  const openModal = (lead: any = { status: 'Active' }) => {
+    setModalLead(lead);
+    setIsModalOpen(true);
+  };
 
   // Sorting State
   const [sortKey, setSortKey] = useState<SortKey>('date');
@@ -48,6 +39,52 @@ export default function LeadsPage() {
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(5);
+
+  React.useEffect(() => {
+    async function load() {
+      try {
+        const [resLeads, resProducts] = await Promise.all([
+          api.get('/leads'),
+          api.get('/products')
+        ]);
+        const formatted = resLeads.data.map((r: any) => ({
+          ...r,
+          date: new Date(r.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+        }));
+        setDataList(formatted);
+        setProducts(resProducts.data);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
+
+  const monthLeads = useMemo(() => {
+    const raw = [...dataList];
+    raw.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    
+    const byMonth: Record<string, any> = {};
+    raw.forEach(lead => {
+      const parts = lead.date.split(' ');
+      const m = parts[1]; // short month
+      if (!byMonth[m]) {
+        byMonth[m] = { month: m, Generated: 0, Converted: 0, Lost: 0 };
+      }
+      byMonth[m].Generated += 1;
+      if (lead.status === 'Converted') byMonth[m].Converted += 1;
+      else if (lead.status === 'Lost') byMonth[m].Lost += 1;
+    });
+    
+    // Return sorted keys or just array
+    return Object.values(byMonth);
+  }, [dataList]);
+
+  // Handle empty state gracefully for derived metrics
+  const current = monthLeads.length > 0 ? monthLeads[monthLeads.length - 1] : { Generated: 0, Converted: 0, Lost: 0 };
+  const active = current.Generated - current.Converted - current.Lost;
 
   const filteredAndSorted = useMemo(() => {
     let result = dataList.filter((p) => {
@@ -96,13 +133,53 @@ export default function LeadsPage() {
     return sortOrder === 'asc' ? <ChevronUp size={14} className="ms-1 text-brand" /> : <ChevronDown size={14} className="ms-1 text-brand" />;
   };
 
-  const handleImport = (importedRows: any[]) => {
-    const mapped = importedRows.map((row, i) => ({
-      ...row,
-      id: Date.now() + i,
-      status: row.status || 'Active'
-    }));
-    setDataList(prev => [...mapped, ...prev]);
+  const handleImport = async (importedRows: any[]) => {
+    try {
+      await api.post('/leads/bulk', importedRows);
+      const res = await api.get('/leads');
+      const formatted = res.data.map((r: any) => ({
+        ...r,
+        date: new Date(r.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+      }));
+      setDataList(formatted);
+      toast.success('Leads imported successfully!');
+    } catch (e) { 
+      toast.error('Bulk import failed.');
+      console.error('Bulk import error:', e); 
+    }
+  };
+
+  const handleSaveLead = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (modalLead.id) {
+        await api.put(`/leads/${modalLead.id}`, modalLead);
+        setDataList(prev => prev.map(l => l.id === modalLead.id ? {...modalLead, date: new Date(modalLead.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} : l));
+        toast.success('Lead updated successfully!');
+      } else {
+        const payload = { ...modalLead, date: new Date().toISOString().split('T')[0] };
+        const res = await api.post('/leads', payload);
+        const newRecord = { ...payload, id: res.data.id, date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) };
+        setDataList(prev => [newRecord, ...prev]);
+        toast.success('Lead added successfully!');
+      }
+      setIsModalOpen(false);
+    } catch (err: any) { 
+      toast.error('An error occurred while saving the lead.');
+      console.error(err); 
+    }
+  };
+
+  const handleDeleteLead = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this lead?')) return;
+    try {
+      await api.delete(`/leads/${id}`);
+      setDataList(prev => prev.filter(l => l.id !== id));
+      toast.success('Lead deleted successfully!');
+    } catch (err) { 
+      toast.error('Failed to delete lead.');
+      console.error(err); 
+    }
   };
 
   const stats = [
@@ -163,12 +240,27 @@ export default function LeadsPage() {
       <div className="dash-card">
         <div className="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-3 mb-4">
           <p className="fw-bold text-white mb-0" style={{ fontSize: '0.95rem', fontFamily: 'Manrope, sans-serif' }}>Pipeline Roster</p>
-          <div className="d-flex gap-2">
+          <div className="d-flex flex-wrap gap-2">
+            <button 
+              className="btn btn-sm d-flex align-items-center gap-2"
+              style={{ background: 'rgba(79, 70, 229, 0.1)', color: '#c3c0ff', border: '1px solid rgba(79, 70, 229, 0.2)', fontWeight: 600, fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}
+              onClick={() => openModal()}
+            >
+              <Plus size={14} />
+              New Lead
+            </button>
             <ImportExcelButton 
               onImport={handleImport} 
               columnMap={{
                 'Prospect': 'name', 'Contact': 'phone', 'Product Interest': 'product', 'Added On': 'date', 'Status': 'status'
-              }} 
+              }}
+              dummyRows={[
+                { Prospect: 'Deepak Patel', Contact: '9876543210', 'Product Interest': 'Motor', 'Added On': '2025-01-10', Status: 'Active' },
+                { Prospect: 'Kavitha Reddy', Contact: '9812345678', 'Product Interest': 'Health', 'Added On': '2025-02-14', Status: 'Converted' },
+                { Prospect: 'Suresh Kumar', Contact: '9988776655', 'Product Interest': 'Life', 'Added On': '2025-03-05', Status: 'Lost' },
+                { Prospect: 'Meena Joshi', Contact: '9001234567', 'Product Interest': 'General', 'Added On': '2025-04-22', Status: 'Active' },
+                { Prospect: 'Arjun Singh', Contact: '9870001234', 'Product Interest': 'Motor', 'Added On': '2025-05-18', Status: 'Converted' },
+              ]}
             />
             <ExportDropdown 
               data={filteredAndSorted} 
@@ -200,8 +292,8 @@ export default function LeadsPage() {
           </div>
         </div>
 
-        <div className="table-wrapper">
-          <table className="table table-custom table-borderless w-100">
+        <div className="table-responsive w-100" style={{ overflowX: 'auto' }}>
+          <table className="table table-custom table-borderless w-100 align-middle">
             <thead>
               <tr>
                 <th className="sortable-th" onClick={() => handleSort('name')}>Prospect <SortIcon columnKey="name" /></th>
@@ -209,6 +301,7 @@ export default function LeadsPage() {
                 <th className="sortable-th" onClick={() => handleSort('product')}>Product Interest <SortIcon columnKey="product" /></th>
                 <th className="sortable-th" onClick={() => handleSort('date')}>Added On <SortIcon columnKey="date" /></th>
                 <th className="sortable-th" onClick={() => handleSort('status')}>Status <SortIcon columnKey="status" /></th>
+                <th className="text-end">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -219,9 +312,17 @@ export default function LeadsPage() {
                     <td className="fw-medium text-white">{row.name}</td>
                     <td className="font-monospace text-brand">{row.phone}</td>
                     <td className="text-muted-custom">{row.product}</td>
-                    <td className="text-muted-custom">{row.date}</td>
-                    <td>
-                      <span className={`stat-badge ${statusBadge[row.status]}`}>{row.status}</span>
+                    <td className="text-muted-custom text-nowrap">{row.date}</td>
+                    <td className="text-nowrap">
+                      <span className={`stat-badge ${statusBadge[row.status] || 'bg-secondary bg-opacity-10 text-secondary'}`}>{row.status}</span>
+                    </td>
+                    <td className="text-end text-nowrap">
+                      <button className="btn btn-sm text-brand p-1" onClick={() => openModal(row)}>
+                        <Edit2 size={14} />
+                      </button>
+                      <button className="btn btn-sm text-danger p-1 ms-2" onClick={() => handleDeleteLead(row.id)}>
+                        <Trash2 size={14} />
+                      </button>
                     </td>
                   </tr>
               ))}
@@ -264,6 +365,50 @@ export default function LeadsPage() {
           </div>
         )}
       </div>
+
+      {/* Add/Edit Modal */}
+      {isModalOpen && (
+        <div className="modal-backdrop bg-black bg-opacity-50 d-flex align-items-center justify-content-center" style={{ position: 'fixed', top: 0, left: 0, w: '100vw', h: '100vh', zIndex: 1050, width: '100vw', height: '100vh' }}>
+          <div className="dash-card w-100" style={{ maxWidth: '500px', border: '1px solid rgba(70, 69, 85, 0.4)' }}>
+            <div className="d-flex justify-content-between align-items-center mb-4">
+              <h5 className="text-white mb-0 fw-bold">{modalLead?.id ? 'Edit Lead' : 'Add New Lead'}</h5>
+              <button className="btn text-muted-custom p-0" onClick={() => setIsModalOpen(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleSaveLead}>
+              <div className="mb-3">
+                <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Prospect Name</label>
+                <input required className="form-control custom-select" value={modalLead?.name || ''} onChange={(e) => setModalLead({...modalLead, name: e.target.value})} />
+              </div>
+              <div className="mb-3">
+                <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Contact Info</label>
+                <input required className="form-control custom-select" value={modalLead?.phone || ''} onChange={(e) => setModalLead({...modalLead, phone: e.target.value})} />
+              </div>
+              <div className="mb-3">
+                <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Product Interest</label>
+                <select className="form-select custom-select" value={modalLead?.product || ''} onChange={(e) => setModalLead({...modalLead, product: e.target.value})}>
+                  {products.length === 0 && <option value="General">General</option>}
+                  {products.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                </select>
+              </div>
+              <div className="mb-4">
+                <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Status</label>
+                <select className="form-select custom-select" value={modalLead?.status || 'Active'} onChange={(e) => setModalLead({...modalLead, status: e.target.value})}>
+                  <option value="Active">Active</option>
+                  <option value="Converted">Converted</option>
+                  <option value="Lost">Lost</option>
+                </select>
+              </div>
+              <div className="d-flex justify-content-end gap-2">
+                <button type="button" className="btn btn-sm" style={{ background: 'transparent', color: '#e2e2eb', border: '1px solid rgba(226,226,235,0.2)' }} onClick={() => setIsModalOpen(false)}>Cancel</button>
+                <button type="submit" className="btn btn-sm" style={{ background: '#4F46E5', color: '#fff', border: 'none' }}>Save Lead</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

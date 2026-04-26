@@ -8,23 +8,80 @@ import {
 import { TrendingUp, TrendingDown, FileText, DollarSign, Briefcase, Activity } from 'lucide-react';
 import { ExportDropdown } from '@/components/DataMobility';
 
-const gwpTrend = [
-  { month: 'Oct', gwp: 420000 }, { month: 'Nov', gwp: 510000 }, { month: 'Dec', gwp: 480000 },
-  { month: 'Jan', gwp: 620000 }, { month: 'Feb', gwp: 590000 }, { month: 'Mar', gwp: 710000 },
-  { month: 'Apr', gwp: 780000 },
-];
-const productMix = [
-  { name: 'Motor', value: 38, color: '#c3c0ff' }, // primary
-  { name: 'Health', value: 29, color: '#4F46E5' }, // primary_container
-  { name: 'Life', value: 21, color: '#413f82' }, // secondary_container
-  { name: 'General', value: 12, color: '#ffb695' }, // tertiary
-];
-const recentActivity = [
-  { id: 'POL-2025-1084', holder: 'Ramesh Patil', type: 'Motor', gwp: '₹18,500', status: 'Active' },
-  { id: 'POL-2025-1083', holder: 'Sneha Desai', type: 'Health', gwp: '₹24,200', status: 'Active' },
-  { id: 'POL-2025-1082', holder: 'Arjun Mehta', type: 'Life', gwp: '₹55,000', status: 'Active' },
-  { id: 'POL-2025-1081', holder: 'Priya Sharma', type: 'Motor', gwp: '₹12,800', status: 'Pending' },
-];
+import api from '@/lib/axios';
+
+const PRODUCT_COLORS = {
+  Motor: '#c3c0ff',
+  Health: '#4F46E5',
+  Life: '#413f82',
+  General: '#ffb695'
+} as const;
+
+export default function DashboardHome() {
+  const [recentActivity, setRecentActivity] = React.useState<any[]>([]);
+  const [gwpTrend, setGwpTrend] = React.useState<any[]>([]);
+  const [productMix, setProductMix] = React.useState<any[]>([]);
+  const [metrics, setMetrics] = React.useState({
+    newBusiness: 0, newPolicies: 0,
+    totalBusiness: 0, totalPolicies: 0
+  });
+
+  React.useEffect(() => {
+    async function loadData() {
+      try {
+        const res = await api.get('/policies');
+        const policies = res.data;
+
+        // Process recent
+        setRecentActivity(policies.slice(0, 4).map((p: any) => ({
+          id: p.number, holder: p.holder, type: p.type,
+          gwp: `₹${Number(p.gwp).toLocaleString('en-IN')}`, status: 'Active'
+        })));
+
+        // Process GWP Trend and Mix
+        let totals = { nb: 0, np: 0, tb: 0, tp: policies.length };
+        const trends: Record<string, number> = {};
+        const mix: Record<string, number> = {};
+
+        const currentMonth = new Date().getMonth();
+        const currentYear = new Date().getFullYear();
+
+        policies.forEach((p: any) => {
+          const gwp = Number(p.gwp);
+          totals.tb += gwp;
+          
+          const d = new Date(p.date);
+          if (d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
+            totals.nb += gwp;
+            totals.np += 1;
+          }
+
+          const m = d.toLocaleDateString('en-GB', { month: 'short' });
+          trends[m] = (trends[m] || 0) + gwp;
+          
+          mix[p.type] = (mix[p.type] || 0) + 1;
+        });
+
+        setMetrics({
+          newBusiness: totals.nb, newPolicies: totals.np,
+          totalBusiness: totals.tb, totalPolicies: totals.tp
+        });
+        
+        setGwpTrend(Object.keys(trends).map(k => ({ month: k, gwp: trends[k] })));
+        
+        const totalP = policies.length || 1;
+        setProductMix(Object.keys(mix).map(k => ({
+          name: k, 
+          value: Math.round((mix[k]/totalP) * 100),
+          color: PRODUCT_COLORS[k as keyof typeof PRODUCT_COLORS] || '#ffffff'
+        })));
+
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    loadData();
+  }, []);
 
 function MetricCard({ label, value, sub, icon: Icon, trend, trendVal }: any) {
   return (
@@ -57,7 +114,6 @@ const PieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) 
   return <text x={x} y={y} fill="#e2e2eb" textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight={600}>{`${(percent * 100).toFixed(0)}%`}</text>;
 };
 
-export default function DashboardHome() {
   return (
     <div className="container-fluid px-0">
       {/* Page header */}
@@ -69,16 +125,16 @@ export default function DashboardHome() {
       {/* KPI Cards */}
       <div className="row g-3 g-md-4 mb-4">
         <div className="col-12 col-sm-6 col-xl-3">
-          <MetricCard label="New Business (This Month)" value="₹7.8L" sub="48 policies written" icon={Briefcase} trend="up" trendVal="+12%" />
+          <MetricCard label="New Business (This Month)" value={`₹${(metrics.newBusiness / 100000).toFixed(1)}L`} sub={`${metrics.newPolicies} policies written`} icon={Briefcase} trend="up" trendVal="+12%" />
         </div>
         <div className="col-12 col-sm-6 col-xl-3">
-          <MetricCard label="Total Business Till Date" value="₹51.2L" sub="Since Apr 2024" icon={Activity} trend="up" trendVal="+8.4%" />
+          <MetricCard label="Total Business Till Date" value={`₹${(metrics.totalBusiness / 100000).toFixed(1)}L`} sub="Since Apr 2024" icon={Activity} trend="up" trendVal="+8.4%" />
         </div>
         <div className="col-12 col-sm-6 col-xl-3">
-          <MetricCard label="Policies Issued" value="1,284" sub="All time" icon={FileText} trend="up" trendVal="+24" />
+          <MetricCard label="Policies Issued" value={metrics.totalPolicies.toLocaleString()} sub="All time" icon={FileText} trend="up" trendVal="+24" />
         </div>
         <div className="col-12 col-sm-6 col-xl-3">
-          <MetricCard label="Total GWP" value="₹51.2L" sub="April 2024 – 2025" icon={DollarSign} trend="up" trendVal="+9.1%" />
+          <MetricCard label="Total GWP" value={`₹${(metrics.totalBusiness / 100000).toFixed(1)}L`} sub="April 2024 – 2025" icon={DollarSign} trend="up" trendVal="+9.1%" />
         </div>
       </div>
 

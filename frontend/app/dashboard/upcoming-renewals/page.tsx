@@ -4,24 +4,13 @@ import React, { useState, useMemo } from 'react';
 import { Search, Clock, AlertTriangle, CheckCircle2, ChevronUp, ChevronDown, ChevronsUpDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ExportDropdown } from '@/components/DataMobility';
 
+import api from '@/lib/axios';
+
 const TODAY = new Date('2025-04-15');
 
 function daysUntil(dateStr: string) {
   return Math.ceil((new Date(dateStr).getTime() - TODAY.getTime()) / 86400000);
 }
-
-const upcomingData = [
-  { id: 1, policyName: 'Motor Comprehensive', holder: 'Ramesh Patil', company: 'HDFC ERGO', policyNo: 'POL-2024-0512', startDate: '18 Apr 2024', dueDate: '2025-04-18', premium: 18500 },
-  { id: 2, policyName: 'Family Floater Health', holder: 'Maya Singh', company: 'Star Health', policyNo: 'POL-2024-0498', startDate: '20 Apr 2024', dueDate: '2025-04-20', premium: 24200 },
-  { id: 3, policyName: 'Term Life Plan', holder: 'Vijay Rao', company: 'LIC', policyNo: 'POL-2024-0487', startDate: '25 Apr 2024', dueDate: '2025-04-25', premium: 55000 },
-  { id: 4, policyName: 'Individual Health', holder: 'Kiran Desai', company: 'ICICI Lombard', policyNo: 'POL-2024-0460', startDate: '05 May 2024', dueDate: '2025-05-05', premium: 19800 },
-  { id: 5, policyName: 'Term Life Plan', holder: 'Deepa Nair', company: 'SBI Life', policyNo: 'POL-2024-0412', startDate: '01 Jun 2024', dueDate: '2025-06-01', premium: 72000 },
-  { id: 6, policyName: 'Motor Third Party', holder: 'Nikhil Shah', company: 'Oriental', policyNo: 'POL-2024-0401', startDate: '10 Apr 2024', dueDate: '2025-04-10', premium: 9500 },
-  { id: 7, policyName: 'Fire & Burglary', holder: 'Kavita Joshi', company: 'New India', policyNo: 'POL-2024-0370', startDate: '12 Apr 2024', dueDate: '2025-04-12', premium: 48000 },
-  { id: 8, policyName: 'Motor Comprehensive', holder: 'Anil Rane', company: 'Reliance General', policyNo: 'POL-2024-0355', startDate: '15 Apr 2024', dueDate: '2025-04-15', premium: 16500 },
-  { id: 9, policyName: 'Health Individual', holder: 'Suresh Kumar', company: 'Care Health', policyNo: 'POL-2024-0340', startDate: '22 Apr 2024', dueDate: '2025-04-22', premium: 18000 },
-  { id: 10, policyName: 'Term Life Plan', holder: 'Priya Sharma', company: 'HDFC Life', policyNo: 'POL-2024-0320', startDate: '30 Apr 2024', dueDate: '2025-04-30', premium: 62000 },
-];
 
 function getStatus(days: number) {
   if (days < 0) return { label: 'Overdue', badgeClass: 'bg-danger bg-opacity-10 text-danger', icon: AlertTriangle };
@@ -33,6 +22,23 @@ const filterOptions = ['All', 'Overdue', 'Due This Week', 'Future'];
 type SortKey = 'policyName' | 'holder' | 'company' | 'policyNo' | 'dueDate' | 'premium';
 
 export default function UpcomingRenewalsPage() {
+  const [upcomingData, setUpcomingData] = useState<any[]>([]);
+
+  React.useEffect(() => {
+    async function load() {
+      try {
+        const res = await api.get('/policies');
+        const formatted = res.data.map((p: any) => ({
+          id: p.id, policyName: p.policyType || p.type, holder: p.holder, company: p.company, policyNo: p.number, startDate: p.date, dueDate: p.endDate, premium: Number(p.gwp)
+        }));
+        setUpcomingData(formatted);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    load();
+  }, []);
+
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('All');
 

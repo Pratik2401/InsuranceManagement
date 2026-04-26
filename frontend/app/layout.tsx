@@ -19,6 +19,8 @@ export const metadata: Metadata = {
   description: "Professional insurance management dashboard for agents and admins",
 };
 
+import ToastProvider from "@/components/ToastProvider";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -32,6 +34,7 @@ export default function RootLayout({
     >
       <body>
         <AuthProvider>
+          <ToastProvider />
           {children}
         </AuthProvider>
       </body>

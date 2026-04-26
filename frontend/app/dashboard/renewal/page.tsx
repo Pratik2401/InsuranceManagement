@@ -5,38 +5,71 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { RefreshCcw, DollarSign, TrendingUp, Building2, Search, ChevronsUpDown, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ExportDropdown } from '@/components/DataMobility';
 
-const monthlyRenewal = { count: 87, gwp: 942000 };
-const tillDate = { count: 634, gwp: 6850000 };
+import api from '@/lib/axios';
 
-const monthTrend = [
-  { month: 'Oct', count: 60 }, { month: 'Nov', count: 72 }, { month: 'Dec', count: 65 },
-  { month: 'Jan', count: 80 }, { month: 'Feb', count: 76 }, { month: 'Mar', count: 91 },
-  { month: 'Apr', count: 87 },
-];
+export default function RenewalPage() {
+  const [renewalRows, setRenewalRows] = useState<any[]>([]);
+  const [monthTrend, setMonthTrend] = useState<any[]>([]);
+  const [kpiData, setKpiData] = useState({
+    monthlyCount: 0, monthlyGwp: 0,
+    tillDateCount: 0, tillDateGwp: 0
+  });
 
-const renewalRows = [
-  { id: 1, insurer: 'HDFC ERGO', holder: 'Ramesh Patil', policyNo: 'POL-2024-0512', date: '05 Apr 2025', gwp: 18500 },
-  { id: 2, insurer: 'Star Health', holder: 'Maya Singh', policyNo: 'POL-2024-0498', date: '06 Apr 2025', gwp: 24200 },
-  { id: 3, insurer: 'LIC', holder: 'Vijay Rao', policyNo: 'POL-2024-0487', date: '07 Apr 2025', gwp: 55000 },
-  { id: 4, insurer: 'Bajaj Allianz', holder: 'Pooja Mehta', policyNo: 'POL-2024-0471', date: '08 Apr 2025', gwp: 12800 },
-  { id: 5, insurer: 'ICICI Lombard', holder: 'Kiran Desai', policyNo: 'POL-2024-0460', date: '09 Apr 2025', gwp: 19800 },
-  { id: 6, insurer: 'New India', holder: 'Suresh Patil', policyNo: 'POL-2024-0445', date: '10 Apr 2025', gwp: 38000 },
-  { id: 7, insurer: 'Tata AIG', holder: 'Anjali Sharma', policyNo: 'POL-2024-0430', date: '11 Apr 2025', gwp: 14500 },
-  { id: 8, insurer: 'Care Health', holder: 'Rajesh Kumar', policyNo: 'POL-2024-0415', date: '12 Apr 2025', gwp: 28000 },
-  { id: 9, insurer: 'SBI Life', holder: 'Nina Gupta', policyNo: 'POL-2024-0402', date: '13 Apr 2025', gwp: 45000 },
-  { id: 10, insurer: 'Go Digit', holder: 'Arun Iyer', policyNo: 'POL-2024-0390', date: '14 Apr 2025', gwp: 11200 },
-];
+  React.useEffect(() => {
+    async function load() {
+      try {
+        const res = await api.get('/policies');
+        const policies = res.data;
+
+        // Populate table records
+        const formatted = policies.map((p: any) => ({
+          id: p.id, insurer: p.company, holder: p.holder, policyNo: p.number, date: p.date, gwp: Number(p.gwp)
+        }));
+        setRenewalRows(formatted);
+
+        // Compute KPIs
+        const currentMonth = new Date().getMonth();
+        const currentYear = new Date().getFullYear();
+        
+        let mCount = 0; let mGwp = 0;
+        let tCount = 0; let tGwp = 0;
+        const trendMap: Record<string, number> = {};
+
+        policies.forEach((p: any) => {
+          const gwp = Number(p.gwp);
+          const d = new Date(p.date || Date.now());
+          tCount++; tGwp += gwp;
+          
+          if (d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
+            mCount++; mGwp += gwp;
+          }
+
+          const mKey = d.toLocaleDateString('en-GB', { month: 'short' });
+          trendMap[mKey] = (trendMap[mKey] || 0) + 1;
+        });
+
+        setKpiData({
+          monthlyCount: mCount, monthlyGwp: mGwp,
+          tillDateCount: tCount, tillDateGwp: tGwp
+        });
+
+        setMonthTrend(Object.keys(trendMap).map(k => ({ month: k, count: trendMap[k] })));
+
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    load();
+  }, []);
 
 const kpis = [
-  { label: 'Renewals This Month', value: monthlyRenewal.count.toString(), sub: 'April 2025', icon: RefreshCcw, color: '#f59e0b' },
-  { label: 'Retained GWP', value: `₹${monthlyRenewal.gwp.toLocaleString('en-IN')}`, sub: 'This month', icon: DollarSign, color: '#f59e0b' },
-  { label: 'Total Renewed (YTD)', value: tillDate.count.toString(), sub: 'Since Apr 2024', icon: TrendingUp, color: '#10b981' },
-  { label: 'Cumulative Premium', value: `₹${(tillDate.gwp / 100000).toFixed(1)}L`, sub: 'Since Apr 2024', icon: Building2, color: '#10b981' },
+  { label: 'Renewals This Month', value: kpiData.monthlyCount.toString(), sub: 'April 2025', icon: RefreshCcw, color: '#f59e0b' },
+  { label: 'Retained GWP', value: `₹${kpiData.monthlyGwp.toLocaleString('en-IN')}`, sub: 'This month', icon: DollarSign, color: '#f59e0b' },
+  { label: 'Total Renewed (YTD)', value: kpiData.tillDateCount.toString(), sub: 'Since Apr 2024', icon: TrendingUp, color: '#10b981' },
+  { label: 'Cumulative Premium', value: `₹${(kpiData.tillDateGwp / 100000).toFixed(1)}L`, sub: 'Since Apr 2024', icon: Building2, color: '#10b981' },
 ];
 
 type SortKey = 'insurer' | 'holder' | 'policyNo' | 'date' | 'gwp';
-
-export default function RenewalPage() {
   const [search, setSearch] = useState('');
   
   // Sorting State

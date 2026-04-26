@@ -24,6 +24,7 @@ router.get('/health', async (req, res) => {
 router.use('/auth', require('./auth'));
 router.use('/leads', require('./leads'));
 router.use('/policies', require('./policies'));
+router.use('/products', require('./products'));
 
 // Export AFTER all route mounts
 module.exports = router;

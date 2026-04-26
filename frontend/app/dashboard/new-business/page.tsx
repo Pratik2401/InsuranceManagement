@@ -1,23 +1,13 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Search, FileText, DollarSign, ChevronUp, ChevronDown, ChevronsUpDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, FileText, DollarSign, ChevronUp, ChevronDown, ChevronsUpDown, ChevronLeft, ChevronRight, Plus, Edit2, Trash2, X } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { ExportDropdown, ImportExcelButton } from '@/components/DataMobility';
 
-const policiesData = [
-  { id: 1, date: '12 Apr 2025', type: 'Motor', company: 'HDFC ERGO', policyType: 'Comprehensive', holder: 'Ramesh Patil', number: 'POL-2025-1084', gwp: 18500 },
-  { id: 2, date: '11 Apr 2025', type: 'Health', company: 'Star Health', policyType: 'Family Floater', holder: 'Sneha Desai', number: 'POL-2025-1083', gwp: 24200 },
-  { id: 3, date: '10 Apr 2025', type: 'Life', company: 'LIC', policyType: 'Term Plan', holder: 'Arjun Mehta', number: 'POL-2025-1082', gwp: 55000 },
-  { id: 4, date: '09 Apr 2025', type: 'Motor', company: 'Bajaj Allianz', policyType: 'Third Party', holder: 'Priya Sharma', number: 'POL-2025-1081', gwp: 12800 },
-  { id: 5, date: '08 Apr 2025', type: 'General', company: 'New India', policyType: 'Fire & Burglary', holder: 'Kavita Joshi', number: 'POL-2025-1080', gwp: 38000 },
-  { id: 6, date: '07 Apr 2025', type: 'Health', company: 'ICICI Lombard', policyType: 'Individual', holder: 'Suresh Kumar', number: 'POL-2025-1079', gwp: 19800 },
-  { id: 7, date: '06 Apr 2025', type: 'Motor', company: 'Reliance General', policyType: 'Comprehensive', holder: 'Anil Rane', number: 'POL-2025-1078', gwp: 16500 },
-  { id: 8, date: '05 Apr 2025', type: 'Life', company: 'SBI Life', policyType: 'Endowment', holder: 'Deepa Nair', number: 'POL-2025-1077', gwp: 72000 },
-  { id: 9, date: '04 Apr 2025', type: 'Health', company: 'Max Bupa', policyType: 'Family Floater', holder: 'Vikram Joshi', number: 'POL-2025-1076', gwp: 21000 },
-  { id: 10, date: '03 Apr 2025', type: 'Motor', company: 'Go Digit', policyType: 'Comprehensive', holder: 'Pooja Iyer', number: 'POL-2025-1075', gwp: 14500 },
-  { id: 11, date: '02 Apr 2025', type: 'Life', company: 'HDFC Life', policyType: 'Term Plan', holder: 'Rahul Verma', number: 'POL-2025-1074', gwp: 48000 },
-  { id: 12, date: '01 Apr 2025', type: 'General', company: 'Tata AIG', policyType: 'Marine', holder: 'Nikhil Shah', number: 'POL-2025-1073', gwp: 115000 },
-];
+import api from '@/lib/axios';
+
+
 
 const typeBadge: Record<string, string> = {
   Motor: 'bg-primary bg-opacity-10 text-primary',
@@ -26,14 +16,40 @@ const typeBadge: Record<string, string> = {
   General: 'bg-warning bg-opacity-10 text-warning',
 };
 
-const allTypes = ['All', 'Motor', 'Health', 'Life', 'General'];
-
 type SortKey = 'date' | 'number' | 'holder' | 'company' | 'gwp';
 
 export default function NewBusinessPage() {
-  const [dataList, setDataList] = useState(policiesData);
+  const [dataList, setDataList] = useState<any[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('All');
+
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalPolicy, setModalPolicy] = useState<any>(null);
+
+  const openModal = (policy: any = { type: 'General', gwp: 0 }) => {
+    setModalPolicy(policy);
+    setIsModalOpen(true);
+  };
+
+  React.useEffect(() => {
+    async function load() {
+      try {
+        const [resPolicies, resProducts] = await Promise.all([
+          api.get('/policies'),
+          api.get('/products')
+        ]);
+        setDataList(resPolicies.data.map((p: any) => ({ ...p, gwp: Number(p.gwp) })));
+        setProducts(resProducts.data);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
   
   // Sorting State
   const [sortKey, setSortKey] = useState<SortKey>('date');
@@ -94,15 +110,46 @@ export default function NewBusinessPage() {
     return sortOrder === 'asc' ? <ChevronUp size={14} className="ms-1 text-brand" /> : <ChevronDown size={14} className="ms-1 text-brand" />;
   };
 
-  const handleImport = (importedRows: any[]) => {
-    // Add artificial IDs to incoming rows
-    const mapped = importedRows.map((row, i) => ({
-      ...row,
-      id: Date.now() + i,
-      type: row.type || 'General',
-      gwp: Number(row.gwp) || 0
-    }));
-    setDataList(prev => [...mapped, ...prev]);
+  const handleImport = async (importedRows: any[]) => {
+    try {
+      await api.post('/policies/bulk', importedRows);
+      const res = await api.get('/policies');
+      setDataList(res.data.map((p: any) => ({ ...p, gwp: Number(p.gwp) })));
+    } catch (e) {
+      console.error('Error importing policies:', e);
+    }
+  };
+
+  const handleSavePolicy = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (modalPolicy.id) {
+        await api.put(`/policies/${modalPolicy.id}`, modalPolicy);
+        setDataList(prev => prev.map(p => p.id === modalPolicy.id ? { ...modalPolicy, date: p.date } : p));
+        toast.success('Policy updated successfully!');
+      } else {
+        const res = await api.post('/policies', modalPolicy);
+        const newRecord = { ...modalPolicy, id: res.data.id, date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) };
+        setDataList(prev => [newRecord, ...prev]);
+        toast.success('Policy added successfully!');
+      }
+      setIsModalOpen(false);
+    } catch (err: any) { 
+      toast.error('An error occurred while saving the policy. Please check all fields.');
+      console.error(err); 
+    }
+  };
+
+  const handleDeletePolicy = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this policy?')) return;
+    try {
+      await api.delete(`/policies/${id}`);
+      setDataList(prev => prev.filter(p => p.id !== id));
+      toast.success('Policy deleted successfully!');
+    } catch (err) {
+      toast.error('Failed to delete policy.');
+      console.error(err); 
+    }
   };
 
   return (
@@ -143,12 +190,27 @@ export default function NewBusinessPage() {
 
         <div className="d-flex align-items-center justify-content-between mb-4">
           <p className="fw-bold text-white mb-0" style={{ fontSize: '0.95rem', fontFamily: 'Manrope, sans-serif' }}>Master Policy Records</p>
-          <div className="d-flex gap-2">
+          <div className="d-flex flex-wrap gap-2">
+            <button 
+              className="btn btn-sm d-flex align-items-center gap-2"
+              style={{ background: 'rgba(79, 70, 229, 0.1)', color: '#c3c0ff', border: '1px solid rgba(79, 70, 229, 0.2)', fontWeight: 600, fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}
+              onClick={() => openModal()}
+            >
+              <Plus size={14} />
+              New Policy
+            </button>
             <ImportExcelButton 
               onImport={handleImport} 
               columnMap={{
                 'Date': 'date', 'Policy No': 'number', 'Holder': 'holder', 'Company': 'company', 'Type': 'type', 'Policy Type': 'policyType', 'GWP': 'gwp'
-              }} 
+              }}
+              dummyRows={[
+                { Date: '2025-01-15', 'Policy No': 'POL-2025-0001', Holder: 'Ramesh Sharma', Company: 'HDFC ERGO', Type: 'Motor', 'Policy Type': 'Comprehensive', GWP: 18500 },
+                { Date: '2025-02-03', 'Policy No': 'POL-2025-0002', Holder: 'Priya Iyer', Company: 'ICICI Lombard', Type: 'Health', 'Policy Type': 'Individual Mediclaim', GWP: 12200 },
+                { Date: '2025-03-20', 'Policy No': 'POL-2025-0003', Holder: 'Anil Mehta', Company: 'SBI General', Type: 'Life', 'Policy Type': 'Term Plan', GWP: 9800 },
+                { Date: '2025-04-11', 'Policy No': 'POL-2025-0004', Holder: 'Sunita Rao', Company: 'Bajaj Allianz', Type: 'Motor', 'Policy Type': 'Third Party', GWP: 6500 },
+                { Date: '2025-05-08', 'Policy No': 'POL-2025-0005', Holder: 'Vikram Nair', Company: 'New India Assurance', Type: 'General', 'Policy Type': 'Fire & Burglary', GWP: 22000 },
+              ]}
             />
             <ExportDropdown 
               data={filteredAndSorted} 
@@ -175,7 +237,8 @@ export default function NewBusinessPage() {
             <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}
               className="form-select custom-select"
               style={{ width: 'auto', minWidth: '150px' }}>
-              {allTypes.map((t) => <option key={t} value={t}>{t === 'All' ? 'All Products' : t}</option>)}
+              <option value="All">All Products</option>
+              {products.map((t) => <option key={t.id} value={t.name}>{t.name}</option>)}
             </select>
             <select value={itemsPerPage} onChange={(e) => setItemsPerPage(Number(e.target.value))}
               className="form-select custom-select" style={{ width: '80px' }}>
@@ -187,8 +250,8 @@ export default function NewBusinessPage() {
         </div>
 
         {/* Table */}
-        <div className="table-wrapper">
-          <table className="table table-custom table-borderless w-100">
+        <div className="table-responsive w-100" style={{ overflowX: 'auto' }}>
+          <table className="table table-custom table-borderless w-100 align-middle">
             <thead>
               <tr>
                 <th className="sortable-th" onClick={() => handleSort('date')}>Date <SortIcon columnKey="date" /></th>
@@ -198,6 +261,7 @@ export default function NewBusinessPage() {
                 <th className="sortable-th" onClick={() => handleSort('company')}>Insurer <SortIcon columnKey="company" /></th>
                 <th>Type</th>
                 <th className="sortable-th text-end" onClick={() => handleSort('gwp')}>GWP <SortIcon columnKey="gwp" /></th>
+                <th className="text-end">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -208,10 +272,18 @@ export default function NewBusinessPage() {
                     <td className="text-muted-custom">{row.date}</td>
                     <td><span className="text-brand fw-semibold">{row.number}</span></td>
                     <td className="fw-medium text-white">{row.holder}</td>
-                    <td><span className={`stat-badge ${typeBadge[row.type]}`}>{row.type}</span></td>
+                    <td><span className={`stat-badge ${typeBadge[row.type] || 'bg-secondary bg-opacity-10 text-secondary'}`}>{row.type}</span></td>
                     <td className="text-muted-custom">{row.company}</td>
                     <td className="text-muted-custom">{row.policyType}</td>
-                    <td className="fw-bold text-white text-end">₹{row.gwp.toLocaleString('en-IN')}</td>
+                    <td className="fw-bold text-white text-end text-nowrap">₹{row.gwp.toLocaleString('en-IN')}</td>
+                    <td className="text-end text-nowrap">
+                      <button className="btn btn-sm text-brand p-1" onClick={() => openModal(row)}>
+                        <Edit2 size={14} />
+                      </button>
+                      <button className="btn btn-sm text-danger p-1 ms-2" onClick={() => handleDeletePolicy(row.id)}>
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
                   </tr>
                 ))
               }
@@ -256,8 +328,61 @@ export default function NewBusinessPage() {
             </div>
           </div>
         )}
-
       </div>
+
+      {/* Add/Edit Modal */}
+      {isModalOpen && (
+        <div className="modal-backdrop bg-black bg-opacity-50 d-flex align-items-center justify-content-center" style={{ position: 'fixed', top: 0, left: 0, w: '100vw', h: '100vh', zIndex: 1050, width: '100vw', height: '100vh' }}>
+          <div className="dash-card w-100" style={{ maxWidth: '500px', border: '1px solid rgba(70, 69, 85, 0.4)' }}>
+            <div className="d-flex justify-content-between align-items-center mb-4">
+              <h5 className="text-white mb-0 fw-bold">{modalPolicy?.id ? 'Edit Policy' : 'Add New Policy'}</h5>
+              <button className="btn text-muted-custom p-0" onClick={() => setIsModalOpen(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <form onSubmit={handleSavePolicy}>
+              <div className="row g-2 mb-3">
+                <div className="col-12 col-sm-6">
+                  <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Policy No.</label>
+                  <input required className="form-control custom-select" value={modalPolicy?.number || ''} onChange={(e) => setModalPolicy({...modalPolicy, number: e.target.value})} />
+                </div>
+                <div className="col-12 col-sm-6">
+                  <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Holder Name</label>
+                  <input className="form-control custom-select" value={modalPolicy?.holder || ''} onChange={(e) => setModalPolicy({...modalPolicy, holder: e.target.value})} />
+                </div>
+              </div>
+              <div className="row g-2 mb-3">
+                <div className="col-12 col-sm-6">
+                  <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Insurer</label>
+                  <input required className="form-control custom-select" value={modalPolicy?.company || ''} onChange={(e) => setModalPolicy({...modalPolicy, company: e.target.value})} />
+                </div>
+                <div className="col-12 col-sm-6">
+                  <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>GWP (Premium)</label>
+                  <input required type="number" className="form-control custom-select" value={modalPolicy?.gwp || ''} onChange={(e) => setModalPolicy({...modalPolicy, gwp: e.target.value})} />
+                </div>
+              </div>
+              <div className="row g-2 mb-4">
+                <div className="col-12 col-sm-6">
+                  <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Product</label>
+                  <select className="form-select custom-select" value={modalPolicy?.type || ''} onChange={(e) => setModalPolicy({...modalPolicy, type: e.target.value})}>
+                    {products.length === 0 && <option value="General">General</option>}
+                    {products.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                  </select>
+                </div>
+                <div className="col-12 col-sm-6">
+                  <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Policy Type</label>
+                  <input className="form-control custom-select" value={modalPolicy?.policyType || ''} onChange={(e) => setModalPolicy({...modalPolicy, policyType: e.target.value})} />
+                </div>
+              </div>
+              <div className="d-flex justify-content-end gap-2">
+                <button type="button" className="btn btn-sm" style={{ background: 'transparent', color: '#e2e2eb', border: '1px solid rgba(226,226,235,0.2)' }} onClick={() => setIsModalOpen(false)}>Cancel</button>
+                <button type="submit" className="btn btn-sm" style={{ background: '#4F46E5', color: '#fff', border: 'none' }}>Save Policy</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

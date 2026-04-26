@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard, FilePlus, RefreshCcw, Clock,
-  Users, BarChart3, Menu, X, Shield, LogOut,
+  Users, BarChart3, Menu, X, Shield, LogOut, Package
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
@@ -16,6 +16,7 @@ const navItems = [
   { href: '/dashboard/upcoming-renewals', label: 'Upcoming Renewals',  icon: Clock },
   { href: '/dashboard/leads',             label: 'Leads',              icon: Users },
   { href: '/dashboard/business',          label: 'Business Analytics', icon: BarChart3 },
+  { href: '/dashboard/products',          label: 'Products',           icon: Package },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -27,14 +28,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pageTitle = navItems.find((n) => n.href === pathname)?.label ?? 'Dashboard';
 
   // Auth guard – redirect to login if not authenticated
-  // useEffect(() => {
-  //   if (!isLoading && !user) {
-  //     const token = localStorage.getItem('insureflow_token');
-  //     if (!token) {
-  //       router.replace('/login');
-  //     }
-  //   }
-  // }, [isLoading, user, router]);
+  useEffect(() => {
+    if (!isLoading && !user) {
+      const token = localStorage.getItem('insureflow_token');
+      if (!token) {
+        router.replace('/login');
+      }
+    }
+  }, [isLoading, user, router]);
 
   const handleLogout = () => {
     logout();
@@ -51,16 +52,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     .toUpperCase();
 
   // Show loading spinner while auth rehydrates
-  // if (isLoading) {
-  //   return (
-  //     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#111319' }}>
-  //       <div style={{ textAlign: 'center', color: '#c3c0ff' }}>
-  //         <Shield size={36} />
-  //         <p style={{ marginTop: '12px', fontSize: '0.85rem', color: '#c7c4d8' }}>Loading…</p>
-  //       </div>
-  //     </div>
-  //   );
-  // }
+  if (isLoading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: '#111319' }}>
+        <div style={{ textAlign: 'center', color: '#c3c0ff' }}>
+          <Shield size={36} />
+          <p style={{ marginTop: '12px', fontSize: '0.85rem', color: '#c7c4d8' }}>Loading…</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="layout-shell">

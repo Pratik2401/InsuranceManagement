@@ -5,25 +5,137 @@ import { ComposedChart, Area, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Respons
 import { Target, Award, ShieldCheck, Clock, UserX } from 'lucide-react';
 import { ExportDropdown } from '@/components/DataMobility';
 
-const monthBusiness = [
-  { month: 'Oct 24', policies: 145, gwp: 1250000, leads: 40 },
-  { month: 'Nov 24', policies: 160, gwp: 1420000, leads: 52 },
-  { month: 'Dec 24', policies: 135, gwp: 1180000, leads: 45 },
-  { month: 'Jan 25', policies: 180, gwp: 1650000, leads: 65 },
-  { month: 'Feb 25', policies: 175, gwp: 1590000, leads: 60 },
-  { month: 'Mar 25', policies: 210, gwp: 1950000, leads: 82 },
-  { month: 'Apr 25', policies: 195, gwp: 1880000, leads: 75 },
-];
-
-const insights = [
-  { label: 'Lead Conversion Rate', value: '38.5%', icon: Target },
-  { label: 'Top Revenue Insurer', value: 'HDFC ERGO', icon: Award },
-  { label: 'Top Product', value: 'Motor Comprehensive', icon: ShieldCheck },
-  { label: 'Pending Renewals', value: '42 Policies', icon: Clock },
-  { label: 'Attrition (YTD)', value: '156 Leads', icon: UserX },
-];
+import api from '@/lib/axios';
 
 export default function BusinessAnalyticsPage() {
+  const [monthBusiness, setMonthBusiness] = React.useState<any[]>([]);
+  const [dynamicInsights, setDynamicInsights] = React.useState([
+    { label: 'Lead Conversion Rate', value: '0%', icon: Target },
+    { label: 'Top Revenue Insurer', value: 'N/A', icon: Award },
+    { label: 'Top Product', value: 'N/A', icon: ShieldCheck },
+    { label: 'Pending Renewals', value: '0 Policies', icon: Clock },
+    { label: 'Attrition (YTD)', value: '0 Leads', icon: UserX },
+  ]);
+  const [systemAlert, setSystemAlert] = React.useState<{ diff: number; topRenewalProduct: string } | null>(null);
+
+  React.useEffect(() => {
+    async function load() {
+      try {
+        const [polRes, leadsRes] = await Promise.all([
+          api.get('/policies'),
+          api.get('/leads')
+        ]);
+
+        const policies = polRes.data;
+        const leads = leadsRes.data;
+
+        const monthly: Record<string, any> = {};
+
+        // For Insights
+        let convertedLeadsCount = 0;
+        let attritionYTD = 0;
+        const currentYear = new Date().getFullYear();
+        const currentMonth = new Date().getMonth();
+        // Track per-month conversion for MoM alert
+        const monthlyConversion: Record<string, { converted: number; total: number }> = {};
+
+        const insurerGWP: Record<string, number> = {};
+        const productCount: Record<string, number> = {};
+        let pendingRenewals = 0;
+
+        // Process policies
+        policies.forEach((p: any) => {
+          const d = new Date(p.date);
+          const mKey = d.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }).replace(' ', ' ');
+          if (!monthly[mKey]) monthly[mKey] = { month: mKey, policies: 0, gwp: 0, leads: 0 };
+          monthly[mKey].policies += 1;
+          monthly[mKey].gwp += Number(p.gwp);
+
+          // Insight: Top Revenue Insurer
+          const company = p.company || 'Unknown';
+          insurerGWP[company] = (insurerGWP[company] || 0) + Number(p.gwp);
+
+          // Insight: Top Product
+          const prodType = p.type || 'General';
+          productCount[prodType] = (productCount[prodType] || 0) + 1;
+
+          // Insight: Pending Renewals
+          // Since mock data endDate is hard to parse uniformly if absent, 
+          // we use the backend date + 1 year logic if endDate not available, or just check p.endDate
+          let endDate = p.endDate ? new Date(p.endDate) : new Date(d.getTime() + 31536000000);
+          const daysLeft = (endDate.getTime() - new Date().getTime()) / (1000 * 3600 * 24);
+          if (daysLeft >= 0 && daysLeft <= 60) {
+            pendingRenewals++;
+          }
+        });
+
+        // Process leads
+        leads.forEach((l: any) => {
+          if (l.status === 'Converted') convertedLeadsCount++;
+          if (l.status === 'Lost' && new Date(l.date).getFullYear() === currentYear) attritionYTD++;
+
+          const ld = new Date(l.date);
+          const lKey = ld.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }).replace(' ', ' ');
+          if (!monthlyConversion[lKey]) monthlyConversion[lKey] = { converted: 0, total: 0 };
+          monthlyConversion[lKey].total++;
+          if (l.status === 'Converted') monthlyConversion[lKey].converted++;
+
+          if (l.status !== 'Converted') return;
+          const mKey = lKey;
+          if (!monthly[mKey]) monthly[mKey] = { month: mKey, policies: 0, gwp: 0, leads: 0 };
+          monthly[mKey].leads += 1;
+        });
+
+        // Compute MoM conversion change for system alert
+        const convMonths = Object.keys(monthlyConversion).sort((a, b) => {
+          const [m1, y1] = a.split(' ');
+          const [m2, y2] = b.split(' ');
+          return new Date(`${m1} 1, 20${y1}`).getTime() - new Date(`${m2} 1, 20${y2}`).getTime();
+        });
+        if (convMonths.length >= 2) {
+          const thisM = monthlyConversion[convMonths[convMonths.length - 1]];
+          const prevM = monthlyConversion[convMonths[convMonths.length - 2]];
+          const thisRate = thisM.total > 0 ? (thisM.converted / thisM.total) * 100 : 0;
+          const prevRate = prevM.total > 0 ? (prevM.converted / prevM.total) * 100 : 0;
+          const diff = parseFloat((thisRate - prevRate).toFixed(1));
+          // Top renewal product = product with highest pending renewals
+          const topRenewalProduct = Object.keys(productCount).length > 0
+            ? Object.keys(productCount).reduce((a, b) => productCount[a] > productCount[b] ? a : b)
+            : 'General';
+          setSystemAlert({ diff, topRenewalProduct });
+        }
+
+        // Calculate final insights
+        const leadConversionRate = leads.length > 0 ? ((convertedLeadsCount / leads.length) * 100).toFixed(1) + '%' : '0%';
+        const topInsurer = Object.keys(insurerGWP).length > 0 ? Object.keys(insurerGWP).reduce((a, b) => insurerGWP[a] > insurerGWP[b] ? a : b) : 'N/A';
+        const topProduct = Object.keys(productCount).length > 0 ? Object.keys(productCount).reduce((a, b) => productCount[a] > productCount[b] ? a : b) : 'N/A';
+
+        setDynamicInsights([
+          { label: 'Lead Conversion Rate', value: leadConversionRate, icon: Target },
+          { label: 'Top Revenue Insurer', value: topInsurer, icon: Award },
+          { label: 'Top Product', value: topProduct, icon: ShieldCheck },
+          { label: 'Pending Renewals', value: `${pendingRenewals} Policies`, icon: Clock },
+          { label: 'Attrition (YTD)', value: `${attritionYTD} Leads`, icon: UserX },
+        ]);
+
+        // Sort by actual date
+        const sorted = Object.values(monthly).sort((a,b) => {
+          const [m1, y1] = a.month.split(' ');
+          const [m2, y2] = b.month.split(' ');
+          const d1 = new Date(`${m1} 1, 20${y1}`);
+          const d2 = new Date(`${m2} 1, 20${y2}`);
+          return d1.getTime() - d2.getTime();
+        });
+
+        setMonthBusiness(sorted);
+
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    load();
+  }, []);
+
   return (
     <div className="container-fluid px-0">
       <div className="mb-4">
@@ -109,7 +221,7 @@ export default function BusinessAnalyticsPage() {
             </p>
 
             <div className="d-flex flex-column gap-3">
-              {insights.map(({ label, value, icon: Icon }) => (
+              {dynamicInsights.map(({ label, value, icon: Icon }) => (
                 <div key={label} className="d-flex align-items-center gap-3 py-2"
                   style={{ borderBottom: '1px solid rgba(70, 69, 85, 0.15)' }}>
                   <div className="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
@@ -124,16 +236,35 @@ export default function BusinessAnalyticsPage() {
               ))}
             </div>
 
-            {/* System alert */}
-            <div className="mt-4 p-3 rounded-3" style={{ background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.15)' }}>
-              <div className="d-flex align-items-center gap-2 mb-2">
-                <span className="rounded-circle bg-danger" style={{ width: 6, height: 6, display: 'inline-block', animation: 'pulse 2s infinite' }}></span>
-                <p className="mb-0 fw-bold text-danger" style={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>System Alert</p>
+            {/* System alert — dynamic */}
+            {systemAlert && (
+              <div className="mt-4 p-3 rounded-3" style={{
+                background: systemAlert.diff >= 0 ? 'rgba(16, 185, 129, 0.05)' : 'rgba(239, 68, 68, 0.05)',
+                border: `1px solid ${systemAlert.diff >= 0 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.15)'}`
+              }}>
+                <div className="d-flex align-items-center gap-2 mb-2">
+                  <span className="rounded-circle" style={{
+                    width: 6, height: 6, display: 'inline-block',
+                    background: systemAlert.diff >= 0 ? '#10b981' : '#ef4444',
+                    animation: 'pulse 2s infinite'
+                  }}></span>
+                  <p className="mb-0 fw-bold" style={{
+                    fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.1em',
+                    color: systemAlert.diff >= 0 ? '#10b981' : '#ef4444'
+                  }}>{systemAlert.diff >= 0 ? 'Positive Signal' : 'System Alert'}</p>
+                </div>
+                <p className="mb-0" style={{ fontSize: '0.8rem', color: '#e2e2eb', lineHeight: 1.6 }}>
+                  Conversion ratio MoM:{' '}
+                  <span className="fw-semibold" style={{ color: systemAlert.diff >= 0 ? '#10b981' : '#ef4444' }}>
+                    {systemAlert.diff >= 0 ? `+${systemAlert.diff}%` : `${systemAlert.diff}%`}
+                  </span>.
+                  {systemAlert.diff < 0
+                    ? ` Recommendation: initiate follow-up for pending ${systemAlert.topRenewalProduct} renewals.`
+                    : ` Portfolio momentum is positive. Keep nurturing ${systemAlert.topRenewalProduct} leads.`
+                  }
+                </p>
               </div>
-              <p className="mb-0" style={{ fontSize: '0.8rem', color: '#e2e2eb', lineHeight: 1.6 }}>
-                Conversion ratio variance detected: <span className="text-danger fw-semibold">−1.2% MoM</span>. Recommendation: initiate follow-up for pending motor renewals.
-              </p>
-            </div>
+            )}
           </div>
         </div>
       </div>
