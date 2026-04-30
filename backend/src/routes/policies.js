@@ -1,6 +1,145 @@
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
+const multer = require('multer');
 const router = express.Router();
 const pool = require('../config/db');
+
+const uploadDir = path.join(__dirname, '../../uploads/policies');
+fs.mkdirSync(uploadDir, { recursive: true });
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype !== 'application/pdf') {
+      return cb(new Error('Only PDF files are allowed'));
+    }
+    cb(null, true);
+  }
+});
+
+function normalizePolicyStatus(status) {
+  const value = String(status || 'active').trim().toLowerCase();
+  if (value === 'open') return 'active';
+  if (value === 'active' || value === 'expired' || value === 'cancelled' || value === 'pending') {
+    return value;
+  }
+  return 'active';
+}
+
+function displayPolicyStatus(status) {
+  const value = String(status || 'active').trim().toLowerCase();
+  if (value === 'active') return 'Active';
+  if (value === 'expired') return 'Expired';
+  if (value === 'cancelled') return 'Cancelled';
+  return 'Pending';
+}
+
+function normalizeRenewalPeriod(period) {
+  return String(period || 'Yearly').trim().toLowerCase() === 'monthly' ? 'Monthly' : 'Yearly';
+}
+
+function normalizeDate(value) {
+  if (!value) return new Date().toISOString().split('T')[0];
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return new Date().toISOString().split('T')[0];
+  return parsed.toISOString().split('T')[0];
+}
+
+function addRenewalPeriod(startDate, renewalPeriod) {
+  const date = new Date(startDate);
+  if (renewalPeriod === 'Monthly') {
+    date.setMonth(date.getMonth() + 1);
+  } else {
+    date.setFullYear(date.getFullYear() + 1);
+  }
+  return date.toISOString().split('T')[0];
+}
+
+function splitHolderName(holder) {
+  const trimmed = String(holder || '').trim();
+  if (!trimmed) return { firstName: 'Unknown', lastName: 'Holder' };
+  const parts = trimmed.split(/\s+/);
+  const firstName = parts.shift() || 'Unknown';
+  const lastName = parts.length > 0 ? parts.join(' ') : 'Holder';
+  return { firstName, lastName };
+}
+
+function buildPolicyPdfPath(policyId) {
+  return path.join(uploadDir, `${policyId}.pdf`);
+}
+
+function buildPolicyPdfUrl(policyId) {
+  const pdfPath = buildPolicyPdfPath(policyId);
+  return fs.existsSync(pdfPath) ? `/uploads/policies/${policyId}.pdf` : null;
+}
+
+async function getOrCreateCustomer(holder, explicitCustomerId) {
+  if (explicitCustomerId) {
+    const customerId = Number(explicitCustomerId);
+    if (!Number.isNaN(customerId) && customerId > 0) {
+      const [rows] = await pool.query('SELECT id FROM customers WHERE id = ?', [customerId]);
+      if (rows.length > 0) return customerId;
+    }
+  }
+
+  const normalizedHolder = String(holder || '').trim();
+  if (!normalizedHolder) {
+    throw new Error('Holder name is required');
+  }
+
+  const [existingRows] = await pool.query(
+    'SELECT id FROM customers WHERE CONCAT(first_name, " ", last_name) = ? LIMIT 1',
+    [normalizedHolder]
+  );
+
+  if (existingRows.length > 0) {
+    return existingRows[0].id;
+  }
+
+  const { firstName, lastName } = splitHolderName(normalizedHolder);
+  const emailSlug = normalizedHolder.toLowerCase().replace(/[^a-z0-9]+/g, '.').replace(/^\.+|\.+$/g, '');
+  const email = `${emailSlug || 'customer'}@local.invalid`;
+
+  try {
+    const [result] = await pool.query(
+      'INSERT INTO customers (first_name, last_name, email) VALUES (?, ?, ?)',
+      [firstName, lastName, email]
+    );
+    return result.insertId;
+  } catch (error) {
+    if (error.code === 'ER_DUP_ENTRY') {
+      const [rows] = await pool.query('SELECT id FROM customers WHERE email = ? LIMIT 1', [email]);
+      if (rows.length > 0) return rows[0].id;
+    }
+    throw error;
+  }
+}
+
+async function persistPolicyPdf(policyId, file) {
+  if (!file) return;
+  await fs.promises.writeFile(buildPolicyPdfPath(policyId), file.buffer);
+}
+
+function mapPolicyRow(row) {
+  const startDate = row.startDate || row.date;
+  return {
+    id: row.id,
+    date: startDate ? new Date(startDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '',
+    startDate: startDate || '',
+    endDate: row.endDate || '',
+    renewalPeriod: row.renewalPeriod || 'Yearly',
+    type: row.type || 'General',
+    company: row.company || '',
+    policyType: row.policyType || '',
+    holder: row.holder || '',
+    number: row.number || '',
+    gwp: Number(row.gwp || 0),
+    status: displayPolicyStatus(row.status),
+    pdfUrl: buildPolicyPdfUrl(row.id),
+  };
+}
 
 // GET all policies (formatted for "New Business" UI)
 router.get('/', async (req, res) => {
@@ -8,20 +147,25 @@ router.get('/', async (req, res) => {
     const query = `
       SELECT 
         p.id, 
-        DATE_FORMAT(p.start_date, '%d %b %Y') as date,
+        DATE_FORMAT(p.start_date, '%Y-%m-%d') as startDate,
+        DATE_FORMAT(p.end_date, '%Y-%m-%d') as endDate,
+        CASE
+          WHEN DATEDIFF(p.end_date, p.start_date) <= 35 THEN 'Monthly'
+          ELSE 'Yearly'
+        END as renewalPeriod,
         p.type,
         p.company,
         p.policy_type as policyType,
-        CONCAT(c.first_name, ' ', c.last_name) as holder,
+        COALESCE(CONCAT(c.first_name, ' ', c.last_name), '') as holder,
         p.policy_number as number,
         p.premium_amount as gwp,
-        DATE_FORMAT(p.end_date, '%Y-%m-%d') as endDate
+        p.status
       FROM policies p
-      JOIN customers c ON p.customer_id = c.id
+      LEFT JOIN customers c ON p.customer_id = c.id
       ORDER BY p.start_date DESC
     `;
     const [rows] = await pool.query(query);
-    res.json(rows);
+    res.json(rows.map(mapPolicyRow));
   } catch (error) {
     console.error('Error fetching policies:', error);
     res.status(500).json({ message: 'Internal server error' });
@@ -29,20 +173,68 @@ router.get('/', async (req, res) => {
 });
 
 // POST a new policy (optional)
-router.post('/', async (req, res) => {
+router.post('/', upload.single('policyPdf'), async (req, res) => {
   try {
-    const { policy_number, customer_id, type, company, policy_type, premium_amount, coverage_amount, start_date, end_date, status } = req.body;
+    const {
+      policy_number,
+      customer_id,
+      holder,
+      type,
+      company,
+      policyType,
+      policy_type,
+      gwp,
+      premium_amount,
+      coverage_amount,
+      date,
+      start_date,
+      end_date,
+      endDate,
+      renewalPeriod,
+      renewal_period,
+      status,
+    } = req.body;
+
+    const resolvedHolder = holder || req.body.customerName || '';
+    const resolvedStartDate = normalizeDate(date || start_date);
+    const resolvedRenewalPeriod = normalizeRenewalPeriod(renewalPeriod || renewal_period);
+    const resolvedEndDate = normalizeDate(endDate || end_date || addRenewalPeriod(resolvedStartDate, resolvedRenewalPeriod));
+    const resolvedStatus = normalizePolicyStatus(status);
+    const resolvedCustomerId = await getOrCreateCustomer(resolvedHolder, customer_id);
+    const resolvedPremium = Number(gwp ?? premium_amount ?? 0);
+    const resolvedPolicyType = policyType || policy_type || 'Other';
     const insertQuery = `
       INSERT INTO policies (policy_number, customer_id, type, company, policy_type, premium_amount, coverage_amount, start_date, end_date, status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     const [result] = await pool.query(insertQuery, [
-      policy_number, customer_id, type, company, policy_type, premium_amount, coverage_amount, start_date, end_date, status || 'pending'
+      policy_number,
+      resolvedCustomerId,
+      type || 'General',
+      company || 'Unknown',
+      resolvedPolicyType,
+      resolvedPremium,
+      Number(coverage_amount || 0),
+      resolvedStartDate,
+      resolvedEndDate,
+      resolvedStatus,
     ]);
-    res.status(201).json({ id: result.insertId, policy_number, customer_id });
+
+    await persistPolicyPdf(result.insertId, req.file);
+
+    res.status(201).json({
+      id: result.insertId,
+      policy_number,
+      customer_id: resolvedCustomerId,
+      holder: resolvedHolder,
+      date: resolvedStartDate,
+      endDate: resolvedEndDate,
+      renewalPeriod: resolvedRenewalPeriod,
+      pdfUrl: buildPolicyPdfUrl(result.insertId),
+    });
   } catch (error) {
     console.error('Error creating policy:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    res.status(500).json({ message: error.message || 'Internal server error' });
   }
 });
 
@@ -54,62 +246,118 @@ router.post('/bulk', async (req, res) => {
       return res.status(400).json({ message: 'Invalid or empty policies array.' });
     }
 
-    const insertQuery = `
-      INSERT INTO policies (policy_number, customer_id, type, company, policy_type, premium_amount, coverage_amount, start_date, end_date, status)
-      VALUES ?
-    `;
+    let count = 0;
 
-    // Assuming imported policies might not have customer_id readily mapped, we'll assign null or 1.
-    // For a real app, you'd match the holder name to a customer.
-    // Here we'll map holder to a dummy customer_id or try to find one. We'll default to 1.
-    const values = policies.map(p => [
-      p.number || p.policy_number, 
-      p.customer_id || 1, 
-      p.type || 'General', 
-      p.company || 'Unknown', 
-      p.policyType || 'Other', 
-      p.gwp || 0, // premium_amount
-      0, // coverage_amount default
-      p.date ? new Date(p.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0], // start_date
-      new Date(Date.now() + 31536000000).toISOString().split('T')[0], // end_date (1 year from now)
-      p.status || 'Active'
-    ]);
+    for (const policy of policies) {
+      const resolvedHolder = policy.holder || policy.customerName || 'Unknown Holder';
+      const resolvedCustomerId = await getOrCreateCustomer(resolvedHolder, policy.customer_id);
+      const resolvedStartDate = normalizeDate(policy.date || policy.startDate || policy.start_date);
+      const resolvedRenewalPeriod = normalizeRenewalPeriod(policy.renewalPeriod || policy.renewal_period);
+      const resolvedEndDate = normalizeDate(policy.endDate || policy.end_date || addRenewalPeriod(resolvedStartDate, resolvedRenewalPeriod));
 
-    const [result] = await pool.query(insertQuery, [values]);
-    res.status(201).json({ message: 'Policies imported successfully', count: result.affectedRows });
+      const [result] = await pool.query(
+        `
+          INSERT INTO policies (policy_number, customer_id, type, company, policy_type, premium_amount, coverage_amount, start_date, end_date, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          policy.number || policy.policy_number,
+          resolvedCustomerId,
+          policy.type || 'General',
+          policy.company || 'Unknown',
+          policy.policyType || policy.policy_type || 'Other',
+          Number(policy.gwp || policy.premium_amount || 0),
+          Number(policy.coverage_amount || 0),
+          resolvedStartDate,
+          resolvedEndDate,
+          normalizePolicyStatus(policy.status),
+        ]
+      );
+
+      count += result.affectedRows;
+    }
+
+    res.status(201).json({ message: 'Policies imported successfully', count });
   } catch (error) {
     console.error('Error bulk creating policies:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    res.status(500).json({ message: error.message || 'Internal server error' });
   }
 });
 
 // PUT update a policy
-router.put('/:id', async (req, res) => {
+router.put('/:id', upload.single('policyPdf'), async (req, res) => {
   try {
     const { id } = req.params;
-    // UI fields might send custom mapped data, we'll map it to DB columns
-    const { number, type, company, policyType, gwp, date } = req.body;
-    
-    // Note: To fully update holder name, we'd need to update the customers table. 
-    // We will just update policy fields for now.
+    const [existingRows] = await pool.query('SELECT * FROM policies WHERE id = ?', [id]);
+    if (existingRows.length === 0) {
+      return res.status(404).json({ message: 'Policy not found' });
+    }
+
+    const {
+      number,
+      policy_number,
+      holder,
+      type,
+      company,
+      policyType,
+      policy_type,
+      gwp,
+      premium_amount,
+      date,
+      start_date,
+      endDate,
+      end_date,
+      renewalPeriod,
+      renewal_period,
+      status,
+    } = req.body;
+
+    const resolvedNumber = number || policy_number || existingRows[0].policy_number;
+    const resolvedHolder = holder || '';
+    const resolvedStartDate = normalizeDate(date || start_date || existingRows[0].start_date);
+    const resolvedRenewalPeriod = normalizeRenewalPeriod(renewalPeriod || renewal_period || 'Yearly');
+    const resolvedEndDate = normalizeDate(endDate || end_date || addRenewalPeriod(resolvedStartDate, resolvedRenewalPeriod));
+    const resolvedCustomerId = await getOrCreateCustomer(resolvedHolder || `${existingRows[0].policy_number} Holder`, existingRows[0].customer_id);
+
     const updateQuery = `
       UPDATE policies 
-      SET policy_number = ?, type = ?, company = ?, policy_type = ?, premium_amount = ?, start_date = ?
+      SET policy_number = ?, customer_id = ?, type = ?, company = ?, policy_type = ?, premium_amount = ?, coverage_amount = ?, start_date = ?, end_date = ?, status = ?
       WHERE id = ?
     `;
-    const formattedDate = date ? new Date(date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
     
     const [result] = await pool.query(updateQuery, [
-      number, type, company, policyType, gwp, formattedDate, id
+      resolvedNumber,
+      resolvedCustomerId,
+      type || existingRows[0].type,
+      company || existingRows[0].company,
+      policyType || policy_type || existingRows[0].policy_type,
+      Number(gwp ?? premium_amount ?? existingRows[0].premium_amount ?? 0),
+      Number(existingRows[0].coverage_amount || 0),
+      resolvedStartDate,
+      resolvedEndDate,
+      normalizePolicyStatus(status || existingRows[0].status),
+      id,
     ]);
     
     if (result.affectedRows === 0) {
       return res.status(404).json({ message: 'Policy not found' });
     }
-    res.json({ message: 'Policy updated successfully' });
+
+    await persistPolicyPdf(id, req.file);
+
+    res.json({
+      message: 'Policy updated successfully',
+      id: Number(id),
+      number: resolvedNumber,
+      holder: resolvedHolder,
+      date: resolvedStartDate,
+      endDate: resolvedEndDate,
+      renewalPeriod: resolvedRenewalPeriod,
+      pdfUrl: buildPolicyPdfUrl(id),
+    });
   } catch (error) {
     console.error('Error updating policy:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    res.status(500).json({ message: error.message || 'Internal server error' });
   }
 });
 
@@ -117,11 +365,17 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const pdfPath = buildPolicyPdfPath(id);
     const [result] = await pool.query('DELETE FROM policies WHERE id = ?', [id]);
     
     if (result.affectedRows === 0) {
       return res.status(404).json({ message: 'Policy not found' });
     }
+
+    if (fs.existsSync(pdfPath)) {
+      await fs.promises.unlink(pdfPath);
+    }
+
     res.json({ message: 'Policy deleted successfully' });
   } catch (error) {
     console.error('Error deleting policy:', error);

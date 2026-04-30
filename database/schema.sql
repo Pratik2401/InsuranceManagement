@@ -36,7 +36,7 @@ CREATE TABLE leads (
     name VARCHAR(100) NOT NULL,
     phone VARCHAR(20),
     product VARCHAR(100),
-    status ENUM('Active', 'Converted', 'Lost') DEFAULT 'Active',
+    status ENUM('Open', 'Converted', 'Lost') DEFAULT 'Open',
     date DATE NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP

@@ -7,6 +7,24 @@ import { ExportDropdown, ImportExcelButton } from '@/components/DataMobility';
 
 import api from '@/lib/axios';
 
+const API_ORIGIN = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').replace(/\/api$/, '');
+
+const createEmptyPolicy = () => ({
+  type: 'General',
+  gwp: '',
+  renewalPeriod: 'Yearly',
+  number: '',
+  holder: '',
+  company: '',
+  policyType: '',
+  date: new Date().toISOString().split('T')[0],
+  status: 'active',
+  startDate: new Date().toISOString().split('T')[0],
+  endDate: '',
+  pdfUrl: null,
+  policyPdf: null,
+});
+
 
 
 const typeBadge: Record<string, string> = {
@@ -28,27 +46,47 @@ export default function NewBusinessPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalPolicy, setModalPolicy] = useState<any>(null);
 
-  const openModal = (policy: any = { type: 'General', gwp: 0 }) => {
-    setModalPolicy(policy);
+  const loadPolicies = async () => {
+    setLoading(true);
+    try {
+      const [resPolicies, resProducts] = await Promise.all([
+        api.get('/policies'),
+        api.get('/products')
+      ]);
+      setDataList(resPolicies.data.map((p: any) => ({
+        ...p,
+        holder: p.holder || '',
+        number: p.number || '',
+        company: p.company || '',
+        type: p.type || 'General',
+        policyType: p.policyType || '',
+        renewalPeriod: p.renewalPeriod || 'Yearly',
+        gwp: Number(p.gwp),
+        pdfUrl: p.pdfUrl ? `${API_ORIGIN}${p.pdfUrl}` : null,
+      })));
+      setProducts(resProducts.data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openModal = (policy: any = createEmptyPolicy()) => {
+    setModalPolicy({
+      ...createEmptyPolicy(),
+      ...policy,
+      gwp: policy?.gwp ?? '',
+      date: policy?.startDate || policy?.date || createEmptyPolicy().date,
+      startDate: policy?.startDate || policy?.date || createEmptyPolicy().startDate,
+      renewalPeriod: policy?.renewalPeriod || 'Yearly',
+      policyPdf: null,
+    });
     setIsModalOpen(true);
   };
 
   React.useEffect(() => {
-    async function load() {
-      try {
-        const [resPolicies, resProducts] = await Promise.all([
-          api.get('/policies'),
-          api.get('/products')
-        ]);
-        setDataList(resPolicies.data.map((p: any) => ({ ...p, gwp: Number(p.gwp) })));
-        setProducts(resProducts.data);
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
+    loadPolicies();
   }, []);
   
   // Sorting State
@@ -61,9 +99,12 @@ export default function NewBusinessPage() {
 
   const filteredAndSorted = useMemo(() => {
     let result = dataList.filter((p) => {
-      const match = p.holder.toLowerCase().includes(search.toLowerCase()) ||
-        p.number.toLowerCase().includes(search.toLowerCase()) ||
-        p.company.toLowerCase().includes(search.toLowerCase());
+      const holder = String(p.holder || '').toLowerCase();
+      const number = String(p.number || '').toLowerCase();
+      const company = String(p.company || '').toLowerCase();
+      const match = holder.includes(search.toLowerCase()) ||
+        number.includes(search.toLowerCase()) ||
+        company.includes(search.toLowerCase());
       const typeMatch = typeFilter === 'All' || p.type === typeFilter;
       return match && typeMatch;
     });
@@ -74,8 +115,8 @@ export default function NewBusinessPage() {
 
       // Convert date strings to timestamps for correct sorting
       if (sortKey === 'date') {
-        aVal = new Date(a.date).getTime();
-        bVal = new Date(b.date).getTime();
+        aVal = new Date(a.startDate || a.date).getTime();
+        bVal = new Date(b.startDate || b.date).getTime();
       }
 
       if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
@@ -113,41 +154,54 @@ export default function NewBusinessPage() {
   const handleImport = async (importedRows: any[]) => {
     try {
       await api.post('/policies/bulk', importedRows);
-      const res = await api.get('/policies');
-      setDataList(res.data.map((p: any) => ({ ...p, gwp: Number(p.gwp) })));
+      await loadPolicies();
+      toast.success('Business imported successfully!');
     } catch (e) {
       console.error('Error importing policies:', e);
+      toast.error('Business import failed.');
     }
   };
 
   const handleSavePolicy = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      if (modalPolicy.id) {
-        await api.put(`/policies/${modalPolicy.id}`, modalPolicy);
-        setDataList(prev => prev.map(p => p.id === modalPolicy.id ? { ...modalPolicy, date: p.date } : p));
-        toast.success('Policy updated successfully!');
-      } else {
-        const res = await api.post('/policies', modalPolicy);
-        const newRecord = { ...modalPolicy, id: res.data.id, date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) };
-        setDataList(prev => [newRecord, ...prev]);
-        toast.success('Policy added successfully!');
+      const formData = new FormData();
+      formData.append('policy_number', modalPolicy.number || '');
+      formData.append('holder', modalPolicy.holder || '');
+      formData.append('type', modalPolicy.type || 'General');
+      formData.append('company', modalPolicy.company || '');
+      formData.append('policyType', modalPolicy.policyType || '');
+      formData.append('gwp', String(modalPolicy.gwp || 0));
+      formData.append('date', modalPolicy.date || new Date().toISOString().split('T')[0]);
+      formData.append('renewalPeriod', modalPolicy.renewalPeriod || 'Yearly');
+      formData.append('status', modalPolicy.status || 'active');
+      if (modalPolicy.policyPdf instanceof File) {
+        formData.append('policyPdf', modalPolicy.policyPdf);
       }
+
+      if (modalPolicy.id) {
+        await api.put(`/policies/${modalPolicy.id}`, formData);
+        toast.success('Business updated successfully!');
+      } else {
+        await api.post('/policies', formData);
+        toast.success('Business added successfully!');
+      }
+      await loadPolicies();
       setIsModalOpen(false);
     } catch (err: any) { 
-      toast.error('An error occurred while saving the policy. Please check all fields.');
+      toast.error('An error occurred while saving the business. Please check all fields.');
       console.error(err); 
     }
   };
 
   const handleDeletePolicy = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this policy?')) return;
+    if (!confirm('Are you sure you want to delete this business?')) return;
     try {
       await api.delete(`/policies/${id}`);
-      setDataList(prev => prev.filter(p => p.id !== id));
-      toast.success('Policy deleted successfully!');
+      await loadPolicies();
+      toast.success('Business deleted successfully!');
     } catch (err) {
-      toast.error('Failed to delete policy.');
+      toast.error('Failed to delete business.');
       console.error(err); 
     }
   };
@@ -155,8 +209,8 @@ export default function NewBusinessPage() {
   return (
     <div className="container-fluid px-0">
       <div className="mb-4">
-        <h1 className="fs-3 fw-bold text-white mb-2" style={{ fontFamily: 'Manrope, sans-serif' }}>New Business</h1>
-        <p className="text-muted-custom mb-0" style={{ fontSize: '0.875rem' }}>Policies written this month filterable by product type.</p>
+        <h1 className="fs-3 fw-bold text-white mb-2" style={{ fontFamily: 'Manrope, sans-serif' }}>Business</h1>
+        <p className="text-muted-custom mb-0" style={{ fontSize: '0.875rem' }}>Policy records filterable by product type, renewal period, and insurer.</p>
       </div>
 
       {/* Summary cards */}
@@ -168,7 +222,7 @@ export default function NewBusinessPage() {
             </div>
             <div>
               <p className="fs-3 fw-bold text-white mb-0" style={{ fontFamily: 'Manrope, sans-serif' }}>{dataList.length}</p>
-              <p className="mb-0 text-muted-custom" style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600 }}>Total Policies</p>
+              <p className="mb-0 text-muted-custom" style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.07em', fontWeight: 600 }}>Total Business</p>
             </div>
           </div>
         </div>
@@ -189,7 +243,7 @@ export default function NewBusinessPage() {
       <div className="dash-card">
 
         <div className="d-flex align-items-center justify-content-between mb-4">
-          <p className="fw-bold text-white mb-0" style={{ fontSize: '0.95rem', fontFamily: 'Manrope, sans-serif' }}>Master Policy Records</p>
+          <p className="fw-bold text-white mb-0" style={{ fontSize: '0.95rem', fontFamily: 'Manrope, sans-serif' }}>Business Records</p>
           <div className="d-flex flex-wrap gap-2">
             <button 
               className="btn btn-sm d-flex align-items-center gap-2"
@@ -197,30 +251,31 @@ export default function NewBusinessPage() {
               onClick={() => openModal()}
             >
               <Plus size={14} />
-              New Policy
+              Add Business
             </button>
             <ImportExcelButton 
               onImport={handleImport} 
               columnMap={{
-                'Date': 'date', 'Policy No': 'number', 'Holder': 'holder', 'Company': 'company', 'Type': 'type', 'Policy Type': 'policyType', 'GWP': 'gwp'
+                'Date': 'date', 'Policy No': 'number', 'Holder': 'holder', 'Company': 'company', 'Type': 'type', 'Policy Type': 'policyType', 'Renewal Period': 'renewalPeriod', 'GWP': 'gwp'
               }}
               dummyRows={[
-                { Date: '2025-01-15', 'Policy No': 'POL-2025-0001', Holder: 'Ramesh Sharma', Company: 'HDFC ERGO', Type: 'Motor', 'Policy Type': 'Comprehensive', GWP: 18500 },
-                { Date: '2025-02-03', 'Policy No': 'POL-2025-0002', Holder: 'Priya Iyer', Company: 'ICICI Lombard', Type: 'Health', 'Policy Type': 'Individual Mediclaim', GWP: 12200 },
-                { Date: '2025-03-20', 'Policy No': 'POL-2025-0003', Holder: 'Anil Mehta', Company: 'SBI General', Type: 'Life', 'Policy Type': 'Term Plan', GWP: 9800 },
-                { Date: '2025-04-11', 'Policy No': 'POL-2025-0004', Holder: 'Sunita Rao', Company: 'Bajaj Allianz', Type: 'Motor', 'Policy Type': 'Third Party', GWP: 6500 },
-                { Date: '2025-05-08', 'Policy No': 'POL-2025-0005', Holder: 'Vikram Nair', Company: 'New India Assurance', Type: 'General', 'Policy Type': 'Fire & Burglary', GWP: 22000 },
+                { Date: '2025-01-15', 'Policy No': 'POL-2025-0001', Holder: 'Ramesh Sharma', Company: 'HDFC ERGO', Type: 'Motor', 'Policy Type': 'Comprehensive', 'Renewal Period': 'Yearly', GWP: 18500 },
+                { Date: '2025-02-03', 'Policy No': 'POL-2025-0002', Holder: 'Priya Iyer', Company: 'ICICI Lombard', Type: 'Health', 'Policy Type': 'Individual Mediclaim', 'Renewal Period': 'Monthly', GWP: 12200 },
+                { Date: '2025-03-20', 'Policy No': 'POL-2025-0003', Holder: 'Anil Mehta', Company: 'SBI General', Type: 'Life', 'Policy Type': 'Term Plan', 'Renewal Period': 'Yearly', GWP: 9800 },
+                { Date: '2025-04-11', 'Policy No': 'POL-2025-0004', Holder: 'Sunita Rao', Company: 'Bajaj Allianz', Type: 'Motor', 'Policy Type': 'Third Party', 'Renewal Period': 'Monthly', GWP: 6500 },
+                { Date: '2025-05-08', 'Policy No': 'POL-2025-0005', Holder: 'Vikram Nair', Company: 'New India Assurance', Type: 'General', 'Policy Type': 'Fire & Burglary', 'Renewal Period': 'Yearly', GWP: 22000 },
               ]}
             />
             <ExportDropdown 
               data={filteredAndSorted} 
-              filename="New_Business_Policies"
+              filename="Business_Policies"
               columns={[
                 { header: 'Date', key: 'date' },
                 { header: 'Policy No.', key: 'number' },
                 { header: 'Holder', key: 'holder' },
                 { header: 'Insurer', key: 'company' },
                 { header: 'Type', key: 'type' },
+                { header: 'Renewal Period', key: 'renewalPeriod' },
                 { header: 'GWP', key: 'gwp' }
               ]} 
             />
@@ -260,13 +315,15 @@ export default function NewBusinessPage() {
                 <th>Product</th>
                 <th className="sortable-th" onClick={() => handleSort('company')}>Insurer <SortIcon columnKey="company" /></th>
                 <th>Type</th>
+                <th>Renewal</th>
+                <th>PDF</th>
                 <th className="sortable-th text-end" onClick={() => handleSort('gwp')}>GWP <SortIcon columnKey="gwp" /></th>
                 <th className="text-end">Actions</th>
               </tr>
             </thead>
             <tbody>
               {paginatedData.length === 0
-                ? <tr><td colSpan={7} className="text-center py-5 text-muted-custom">No records found.</td></tr>
+                ? <tr><td colSpan={10} className="text-center py-5 text-muted-custom">No records found.</td></tr>
                 : paginatedData.map((row) => (
                   <tr key={row.id}>
                     <td className="text-muted-custom">{row.date}</td>
@@ -275,6 +332,10 @@ export default function NewBusinessPage() {
                     <td><span className={`stat-badge ${typeBadge[row.type] || 'bg-secondary bg-opacity-10 text-secondary'}`}>{row.type}</span></td>
                     <td className="text-muted-custom">{row.company}</td>
                     <td className="text-muted-custom">{row.policyType}</td>
+                    <td className="text-muted-custom">{row.renewalPeriod || 'Yearly'}</td>
+                    <td className="text-muted-custom text-nowrap">
+                      {row.pdfUrl ? <a href={row.pdfUrl} target="_blank" rel="noreferrer" className="text-brand">View PDF</a> : '—'}
+                    </td>
                     <td className="fw-bold text-white text-end text-nowrap">₹{row.gwp.toLocaleString('en-IN')}</td>
                     <td className="text-end text-nowrap">
                       <button className="btn btn-sm text-brand p-1" onClick={() => openModal(row)}>
@@ -343,12 +404,12 @@ export default function NewBusinessPage() {
             <form onSubmit={handleSavePolicy}>
               <div className="row g-2 mb-3">
                 <div className="col-12 col-sm-6">
-                  <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Policy No.</label>
+                  <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Business / Policy No.</label>
                   <input required className="form-control custom-select" value={modalPolicy?.number || ''} onChange={(e) => setModalPolicy({...modalPolicy, number: e.target.value})} />
                 </div>
                 <div className="col-12 col-sm-6">
                   <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Holder Name</label>
-                  <input className="form-control custom-select" value={modalPolicy?.holder || ''} onChange={(e) => setModalPolicy({...modalPolicy, holder: e.target.value})} />
+                  <input required className="form-control custom-select" value={modalPolicy?.holder || ''} onChange={(e) => setModalPolicy({...modalPolicy, holder: e.target.value})} />
                 </div>
               </div>
               <div className="row g-2 mb-3">
@@ -361,7 +422,7 @@ export default function NewBusinessPage() {
                   <input required type="number" className="form-control custom-select" value={modalPolicy?.gwp || ''} onChange={(e) => setModalPolicy({...modalPolicy, gwp: e.target.value})} />
                 </div>
               </div>
-              <div className="row g-2 mb-4">
+              <div className="row g-2 mb-3">
                 <div className="col-12 col-sm-6">
                   <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Product</label>
                   <select className="form-select custom-select" value={modalPolicy?.type || ''} onChange={(e) => setModalPolicy({...modalPolicy, type: e.target.value})}>
@@ -374,9 +435,38 @@ export default function NewBusinessPage() {
                   <input className="form-control custom-select" value={modalPolicy?.policyType || ''} onChange={(e) => setModalPolicy({...modalPolicy, policyType: e.target.value})} />
                 </div>
               </div>
+              <div className="row g-2 mb-3">
+                <div className="col-12 col-sm-6">
+                  <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Start Date</label>
+                  <input required type="date" className="form-control custom-select" value={modalPolicy?.date || ''} onChange={(e) => setModalPolicy({...modalPolicy, date: e.target.value, startDate: e.target.value})} />
+                </div>
+                <div className="col-12 col-sm-6">
+                  <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Renewal Period</label>
+                  <select className="form-select custom-select" value={modalPolicy?.renewalPeriod || 'Yearly'} onChange={(e) => setModalPolicy({...modalPolicy, renewalPeriod: e.target.value})}>
+                    <option value="Monthly">Monthly</option>
+                    <option value="Yearly">Yearly</option>
+                  </select>
+                </div>
+              </div>
+              <div className="mb-4">
+                <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Policy PDF</label>
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  className="form-control custom-select"
+                  onChange={(e) => setModalPolicy({...modalPolicy, policyPdf: e.target.files?.[0] || null})}
+                />
+                {modalPolicy?.pdfUrl && !modalPolicy?.policyPdf && (
+                  <div className="mt-2">
+                    <a href={modalPolicy.pdfUrl} target="_blank" rel="noreferrer" className="text-brand" style={{ fontSize: '0.8rem' }}>
+                      Open existing PDF
+                    </a>
+                  </div>
+                )}
+              </div>
               <div className="d-flex justify-content-end gap-2">
                 <button type="button" className="btn btn-sm" style={{ background: 'transparent', color: '#e2e2eb', border: '1px solid rgba(226,226,235,0.2)' }} onClick={() => setIsModalOpen(false)}>Cancel</button>
-                <button type="submit" className="btn btn-sm" style={{ background: '#4F46E5', color: '#fff', border: 'none' }}>Save Policy</button>
+                <button type="submit" className="btn btn-sm" style={{ background: '#4F46E5', color: '#fff', border: 'none' }}>Save Business</button>
               </div>
             </form>
           </div>

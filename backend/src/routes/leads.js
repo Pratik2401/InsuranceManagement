@@ -2,11 +2,29 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
 
+function normalizeLeadStatus(status) {
+  const value = String(status || 'Open').trim().toLowerCase();
+  if (value === 'active' || value === 'open') return 'Open';
+  if (value === 'converted') return 'Converted';
+  if (value === 'lost') return 'Lost';
+  return 'Open';
+}
+
+function displayLeadStatus(status) {
+  const value = String(status || 'Open').trim().toLowerCase();
+  if (value === 'converted') return 'Converted';
+  if (value === 'lost') return 'Lost';
+  return 'Open';
+}
+
 // GET all leads
 router.get('/', async (req, res) => {
   try {
     const [rows] = await pool.query('SELECT * FROM leads ORDER BY date DESC');
-    res.json(rows);
+    res.json(rows.map((row) => ({
+      ...row,
+      status: displayLeadStatus(row.status),
+    })));
   } catch (error) {
     console.error('Error fetching leads:', error);
     res.status(500).json({ message: 'Internal server error' });
@@ -21,8 +39,9 @@ router.post('/', async (req, res) => {
       INSERT INTO leads (name, phone, product, status, date)
       VALUES (?, ?, ?, ?, ?)
     `;
-    const [result] = await pool.query(insertQuery, [name, phone, product, status || 'Active', date]);
-    res.status(201).json({ id: result.insertId, name, phone, product, status, date });
+    const resolvedStatus = normalizeLeadStatus(status);
+    const [result] = await pool.query(insertQuery, [name, phone, product, resolvedStatus, date]);
+    res.status(201).json({ id: result.insertId, name, phone, product, status: resolvedStatus, date });
   } catch (error) {
     console.error('Error creating lead:', error);
     res.status(500).json({ message: 'Internal server error' });
@@ -46,7 +65,7 @@ router.post('/bulk', async (req, res) => {
       lead.name, 
       lead.phone, 
       lead.product, 
-      lead.status || 'Active', 
+      normalizeLeadStatus(lead.status), 
       lead.date || new Date().toISOString().split('T')[0]
     ]);
 
@@ -69,12 +88,12 @@ router.put('/:id', async (req, res) => {
       SET name = ?, phone = ?, product = ?, status = ?, date = ?
       WHERE id = ?
     `;
-    const [result] = await pool.query(updateQuery, [name, phone, product, status, date, id]);
+    const [result] = await pool.query(updateQuery, [name, phone, product, normalizeLeadStatus(status), date, id]);
     
     if (result.affectedRows === 0) {
       return res.status(404).json({ message: 'Lead not found' });
     }
-    res.json({ id, name, phone, product, status, date });
+    res.json({ id, name, phone, product, status: normalizeLeadStatus(status), date });
   } catch (error) {
     console.error('Error updating lead:', error);
     res.status(500).json({ message: 'Internal server error' });

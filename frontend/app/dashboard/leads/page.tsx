@@ -10,8 +10,16 @@ import api from '@/lib/axios';
 
 const statusBadge: Record<string, string> = {
   Converted: 'bg-success bg-opacity-10 text-success',
-  Active: 'bg-brand bg-opacity-10 text-brand',
+  Open: 'bg-brand bg-opacity-10 text-brand',
   Lost: 'bg-danger bg-opacity-10 text-danger',
+};
+
+const normalizeLeadStatus = (status: string) => {
+  const value = String(status || 'Open').trim();
+  if (value.toLowerCase() === 'active') return 'Open';
+  if (value.toLowerCase() === 'converted') return 'Converted';
+  if (value.toLowerCase() === 'lost') return 'Lost';
+  return 'Open';
 };
 
 type SortKey = 'name' | 'phone' | 'product' | 'date' | 'status';
@@ -27,8 +35,8 @@ export default function LeadsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalLead, setModalLead] = useState<any>(null);
 
-  const openModal = (lead: any = { status: 'Active' }) => {
-    setModalLead(lead);
+  const openModal = (lead: any = { status: 'Open' }) => {
+    setModalLead({ ...lead, status: normalizeLeadStatus(lead.status) });
     setIsModalOpen(true);
   };
 
@@ -49,6 +57,7 @@ export default function LeadsPage() {
         ]);
         const formatted = resLeads.data.map((r: any) => ({
           ...r,
+          status: normalizeLeadStatus(r.status),
           date: new Date(r.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
         }));
         setDataList(formatted);
@@ -139,6 +148,7 @@ export default function LeadsPage() {
       const res = await api.get('/leads');
       const formatted = res.data.map((r: any) => ({
         ...r,
+        status: normalizeLeadStatus(r.status),
         date: new Date(r.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
       }));
       setDataList(formatted);
@@ -153,11 +163,11 @@ export default function LeadsPage() {
     e.preventDefault();
     try {
       if (modalLead.id) {
-        await api.put(`/leads/${modalLead.id}`, modalLead);
+        await api.put(`/leads/${modalLead.id}`, { ...modalLead, status: normalizeLeadStatus(modalLead.status) });
         setDataList(prev => prev.map(l => l.id === modalLead.id ? {...modalLead, date: new Date(modalLead.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} : l));
         toast.success('Lead updated successfully!');
       } else {
-        const payload = { ...modalLead, date: new Date().toISOString().split('T')[0] };
+        const payload = { ...modalLead, status: normalizeLeadStatus(modalLead.status), date: new Date().toISOString().split('T')[0] };
         const res = await api.post('/leads', payload);
         const newRecord = { ...payload, id: res.data.id, date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) };
         setDataList(prev => [newRecord, ...prev]);
@@ -184,7 +194,7 @@ export default function LeadsPage() {
 
   const stats = [
     { label: 'Leads Given (Apr)', value: current.Generated, icon: Users, color: '#c3c0ff' },
-    { label: 'Active Prospects', value: active, icon: UserPlus, color: '#4F46E5' },
+    { label: 'Open Prospects', value: active, icon: UserPlus, color: '#4F46E5' },
     { label: 'Won (Apr)', value: current.Converted, icon: UserCheck, color: '#10b981' },
     { label: 'Lost (Apr)', value: current.Lost, icon: UserX, color: '#ef4444' },
   ];
@@ -255,10 +265,10 @@ export default function LeadsPage() {
                 'Prospect': 'name', 'Contact': 'phone', 'Product Interest': 'product', 'Added On': 'date', 'Status': 'status'
               }}
               dummyRows={[
-                { Prospect: 'Deepak Patel', Contact: '9876543210', 'Product Interest': 'Motor', 'Added On': '2025-01-10', Status: 'Active' },
+                { Prospect: 'Deepak Patel', Contact: '9876543210', 'Product Interest': 'Motor', 'Added On': '2025-01-10', Status: 'Open' },
                 { Prospect: 'Kavitha Reddy', Contact: '9812345678', 'Product Interest': 'Health', 'Added On': '2025-02-14', Status: 'Converted' },
                 { Prospect: 'Suresh Kumar', Contact: '9988776655', 'Product Interest': 'Life', 'Added On': '2025-03-05', Status: 'Lost' },
-                { Prospect: 'Meena Joshi', Contact: '9001234567', 'Product Interest': 'General', 'Added On': '2025-04-22', Status: 'Active' },
+                { Prospect: 'Meena Joshi', Contact: '9001234567', 'Product Interest': 'General', 'Added On': '2025-04-22', Status: 'Open' },
                 { Prospect: 'Arjun Singh', Contact: '9870001234', 'Product Interest': 'Motor', 'Added On': '2025-05-18', Status: 'Converted' },
               ]}
             />
@@ -280,7 +290,7 @@ export default function LeadsPage() {
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
               className="form-select custom-select" style={{ width: '130px' }}>
               <option value="All">All Status</option>
-              <option value="Active">Active</option>
+              <option value="Open">Open</option>
               <option value="Converted">Converted</option>
               <option value="Lost">Lost</option>
             </select>
@@ -394,8 +404,8 @@ export default function LeadsPage() {
               </div>
               <div className="mb-4">
                 <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Status</label>
-                <select className="form-select custom-select" value={modalLead?.status || 'Active'} onChange={(e) => setModalLead({...modalLead, status: e.target.value})}>
-                  <option value="Active">Active</option>
+                <select className="form-select custom-select" value={modalLead?.status || 'Open'} onChange={(e) => setModalLead({...modalLead, status: e.target.value})}>
+                  <option value="Open">Open</option>
                   <option value="Converted">Converted</option>
                   <option value="Lost">Lost</option>
                 </select>

@@ -19,7 +19,9 @@ const PRODUCT_COLORS = {
 
 export default function DashboardHome() {
   const [recentActivity, setRecentActivity] = React.useState<any[]>([]);
-  const [gwpTrend, setGwpTrend] = React.useState<any[]>([]);
+  const [gwpMonthly, setGwpMonthly] = React.useState<any[]>([]);
+  const [gwpYearly, setGwpYearly] = React.useState<any[]>([]);
+  const [gwpView, setGwpView] = React.useState<'monthly' | 'yearly'>('monthly');
   const [productMix, setProductMix] = React.useState<any[]>([]);
   const [metrics, setMetrics] = React.useState({
     newBusiness: 0, newPolicies: 0,
@@ -40,11 +42,15 @@ export default function DashboardHome() {
 
         // Process GWP Trend and Mix
         let totals = { nb: 0, np: 0, tb: 0, tp: policies.length };
-        const trends: Record<string, number> = {};
+        const trendsMonthly: Record<string, number> = {};
+        const trendsYearly: Record<string, number> = {};
         const mix: Record<string, number> = {};
 
         const currentMonth = new Date().getMonth();
         const currentYear = new Date().getFullYear();
+
+        // Month order helper
+        const MONTH_ORDER = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
         policies.forEach((p: any) => {
           const gwp = Number(p.gwp);
@@ -56,8 +62,11 @@ export default function DashboardHome() {
             totals.np += 1;
           }
 
-          const m = d.toLocaleDateString('en-GB', { month: 'short' });
-          trends[m] = (trends[m] || 0) + gwp;
+          const mLabel = d.toLocaleDateString('en-GB', { month: 'short' });
+          trendsMonthly[mLabel] = (trendsMonthly[mLabel] || 0) + gwp;
+
+          const yLabel = d.getFullYear().toString();
+          trendsYearly[yLabel] = (trendsYearly[yLabel] || 0) + gwp;
           
           mix[p.type] = (mix[p.type] || 0) + 1;
         });
@@ -67,7 +76,17 @@ export default function DashboardHome() {
           totalBusiness: totals.tb, totalPolicies: totals.tp
         });
         
-        setGwpTrend(Object.keys(trends).map(k => ({ month: k, gwp: trends[k] })));
+        // Sort monthly by calendar order
+        const sortedMonthly = MONTH_ORDER
+          .filter(m => trendsMonthly[m] !== undefined)
+          .map(m => ({ month: m, gwp: trendsMonthly[m] }));
+        setGwpMonthly(sortedMonthly);
+
+        // Sort yearly ascending
+        const sortedYearly = Object.keys(trendsYearly)
+          .sort()
+          .map(y => ({ month: y, gwp: trendsYearly[y] }));
+        setGwpYearly(sortedYearly);
         
         const totalP = policies.length || 1;
         setProductMix(Object.keys(mix).map(k => ({
@@ -114,6 +133,8 @@ const PieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) 
   return <text x={x} y={y} fill="#e2e2eb" textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight={600}>{`${(percent * 100).toFixed(0)}%`}</text>;
 };
 
+const gwpData = gwpView === 'monthly' ? gwpMonthly : gwpYearly;
+
   return (
     <div className="container-fluid px-0">
       {/* Page header */}
@@ -128,7 +149,7 @@ const PieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) 
           <MetricCard label="New Business (This Month)" value={`₹${(metrics.newBusiness / 100000).toFixed(1)}L`} sub={`${metrics.newPolicies} policies written`} icon={Briefcase} trend="up" trendVal="+12%" />
         </div>
         <div className="col-12 col-sm-6 col-xl-3">
-          <MetricCard label="Total Business Till Date" value={`₹${(metrics.totalBusiness / 100000).toFixed(1)}L`} sub="Since Apr 2024" icon={Activity} trend="up" trendVal="+8.4%" />
+          <MetricCard label="YTD" value={`₹${(metrics.totalBusiness / 100000).toFixed(1)}L`} sub="Since Apr 2024" icon={Activity} trend="up" trendVal="+8.4%" />
         </div>
         <div className="col-12 col-sm-6 col-xl-3">
           <MetricCard label="Policies Issued" value={metrics.totalPolicies.toLocaleString()} sub="All time" icon={FileText} trend="up" trendVal="+24" />
@@ -143,11 +164,38 @@ const PieLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) 
         {/* Area Chart */}
         <div className="col-12 col-lg-8">
           <div className="dash-card h-100">
-            <p className="fw-bold text-white mb-1" style={{ fontSize: '0.95rem', fontFamily: 'Manrope, sans-serif' }}>GWP Trend</p>
-            <p className="mb-4 text-muted-custom" style={{ fontSize: '0.75rem' }}>Monthly Gross Written Premium trajectory</p>
+            <div className="d-flex align-items-center justify-content-between mb-1">
+              <p className="fw-bold text-white mb-0" style={{ fontSize: '0.95rem', fontFamily: 'Manrope, sans-serif' }}>GWP Trend</p>
+              {/* Monthly / Yearly toggle */}
+              <div className="d-flex" style={{ background: '#191b22', borderRadius: 8, padding: '3px', gap: '3px' }}>
+                {(['monthly', 'yearly'] as const).map(v => (
+                  <button
+                    key={v}
+                    onClick={() => setGwpView(v)}
+                    style={{
+                      background: gwpView === v ? '#4F46E5' : 'transparent',
+                      color: gwpView === v ? '#fff' : '#c7c4d8',
+                      border: 'none',
+                      borderRadius: 6,
+                      padding: '3px 12px',
+                      fontSize: '0.72rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      textTransform: 'capitalize',
+                      transition: 'background 0.2s',
+                    }}
+                  >
+                    {v.charAt(0).toUpperCase() + v.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="mb-4 text-muted-custom" style={{ fontSize: '0.75rem' }}>
+              {gwpView === 'monthly' ? 'Monthly' : 'Yearly'} Gross Written Premium trajectory
+            </p>
             <div className="chart-container-wrapper">
               <ResponsiveContainer width="100%" height={260} minWidth={0}>
-                <AreaChart data={gwpTrend} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
+                <AreaChart data={gwpData} margin={{ top: 5, right: 0, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="gwpGrad" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#4F46E5" stopOpacity={0.4} />
