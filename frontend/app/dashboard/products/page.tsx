@@ -50,8 +50,8 @@ export default function ProductsPage() {
 
   const filteredAndSorted = useMemo(() => {
     let result = dataList.filter((p) => {
-      return p.name.toLowerCase().includes(search.toLowerCase()) || 
-             (p.description && p.description.toLowerCase().includes(search.toLowerCase()));
+      return p.name.toLowerCase().includes(search.toLowerCase()) ||
+        (p.description && p.description.toLowerCase().includes(search.toLowerCase()));
     });
 
     result.sort((a, b) => {
@@ -100,21 +100,21 @@ export default function ProductsPage() {
         toast.success('Product updated successfully!');
       } else {
         const res = await api.post('/products', modalProduct);
-        const newRecord = { 
-          ...modalProduct, 
-          id: res.data.id, 
-          created_at: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) 
+        const newRecord = {
+          ...modalProduct,
+          id: res.data.id,
+          created_at: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
         };
         setDataList(prev => [...prev, newRecord]);
         toast.success('Product added successfully!');
       }
       setIsModalOpen(false);
-    } catch (err: any) { 
+    } catch (err: any) {
       if (err.response?.status === 409) {
         toast.error('A product with this name already exists.');
       } else {
         toast.error('An error occurred while saving.');
-        console.error(err); 
+        console.error(err);
       }
     }
   };
@@ -127,7 +127,7 @@ export default function ProductsPage() {
       toast.success('Product deleted successfully!');
     } catch (err) {
       toast.error('Failed to delete product.');
-      console.error(err); 
+      console.error(err);
     }
   };
 
@@ -154,7 +154,7 @@ export default function ProductsPage() {
         <div className="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-3 mb-4">
           <p className="fw-bold text-white mb-0" style={{ fontSize: '0.95rem', fontFamily: 'Manrope, sans-serif' }}>Product List</p>
           <div className="d-flex flex-wrap gap-2">
-            <button 
+            <button
               className="btn btn-sm d-flex align-items-center gap-2"
               style={{ background: 'rgba(79, 70, 229, 0.1)', color: '#c3c0ff', border: '1px solid rgba(79, 70, 229, 0.2)', fontWeight: 600, fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}
               onClick={() => openModal()}
@@ -162,14 +162,14 @@ export default function ProductsPage() {
               <Plus size={14} />
               New Product
             </button>
-            <ExportDropdown 
-              data={filteredAndSorted} 
+            <ExportDropdown
+              data={filteredAndSorted}
               filename="Products_Master"
               columns={[
                 { header: 'Product Name', key: 'name' },
                 { header: 'Description', key: 'description' },
                 { header: 'Created On', key: 'created_at' }
-              ]} 
+              ]}
             />
             <div className="search-box ms-lg-2" style={{ maxWidth: '250px' }}>
               <Search size={16} className="text-muted-custom" />
@@ -212,7 +212,7 @@ export default function ProductsPage() {
                       </button>
                     </td>
                   </tr>
-              ))}
+                ))}
             </tbody>
           </table>
         </div>
@@ -223,10 +223,10 @@ export default function ProductsPage() {
             <div className="pagination-info">
               Showing <span className="text-white fw-medium">{startIndex + 1}</span> to <span className="text-white fw-medium">{Math.min(startIndex + itemsPerPage, filteredAndSorted.length)}</span> of <span className="text-white fw-medium">{filteredAndSorted.length}</span> records
             </div>
-            
+
             <div className="pagination-controls">
-              <button 
-                className="btn-page" 
+              <button
+                className="btn-page"
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
               >
@@ -241,8 +241,8 @@ export default function ProductsPage() {
                   {idx + 1}
                 </button>
               ))}
-              <button 
-                className="btn-page" 
+              <button
+                className="btn-page"
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}
               >
@@ -255,7 +255,7 @@ export default function ProductsPage() {
 
       {/* Add/Edit Modal */}
       {isModalOpen && (
-        <div className="modal-backdrop bg-black bg-opacity-50 d-flex align-items-center justify-content-center" style={{ position: 'fixed', top: 0, left: 0, w: '100vw', h: '100vh', zIndex: 1050, width: '100vw', height: '100vh' }}>
+        <div className="modal-backdrop bg-black bg-opacity-50 d-flex align-items-center justify-content-center" style={{ position: 'fixed', top: 0, left: 0, zIndex: 1050, width: '100vw', height: '100vh' }}>
           <div className="dash-card w-100" style={{ maxWidth: '500px', border: '1px solid rgba(70, 69, 85, 0.4)' }}>
             <div className="d-flex justify-content-between align-items-center mb-4">
               <h5 className="text-white mb-0 fw-bold">{modalProduct?.id ? 'Edit Product' : 'Add New Product'}</h5>
@@ -266,11 +266,11 @@ export default function ProductsPage() {
             <form onSubmit={handleSaveProduct}>
               <div className="mb-3">
                 <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Product Name</label>
-                <input required className="form-control custom-select" value={modalProduct?.name || ''} onChange={(e) => setModalProduct({...modalProduct, name: e.target.value})} placeholder="e.g. Cyber Security" />
+                <input required className="form-control custom-select" value={modalProduct?.name || ''} onChange={(e) => setModalProduct({ ...modalProduct, name: e.target.value })} placeholder="e.g. Cyber Security" />
               </div>
               <div className="mb-4">
                 <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Description</label>
-                <textarea className="form-control custom-select" rows={3} value={modalProduct?.description || ''} onChange={(e) => setModalProduct({...modalProduct, description: e.target.value})} placeholder="Optional product description..."></textarea>
+                <textarea className="form-control custom-select" rows={3} value={modalProduct?.description || ''} onChange={(e) => setModalProduct({ ...modalProduct, description: e.target.value })} placeholder="Optional product description..."></textarea>
               </div>
               <div className="d-flex justify-content-end gap-2">
                 <button type="button" className="btn btn-sm" style={{ background: 'transparent', color: '#e2e2eb', border: '1px solid rgba(226,226,235,0.2)' }} onClick={() => setIsModalOpen(false)}>Cancel</button>

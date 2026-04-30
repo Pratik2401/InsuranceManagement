@@ -393,7 +393,7 @@ export default function NewBusinessPage() {
 
       {/* Add/Edit Modal */}
       {isModalOpen && (
-        <div className="modal-backdrop bg-black bg-opacity-50 d-flex align-items-center justify-content-center" style={{ position: 'fixed', top: 0, left: 0, w: '100vw', h: '100vh', zIndex: 1050, width: '100vw', height: '100vh' }}>
+        <div className="modal-backdrop bg-black bg-opacity-50 d-flex align-items-center justify-content-center" style={{ position: 'fixed', top: 0, left: 0, zIndex: 1050, width: '100vw', height: '100vh' }}>
           <div className="dash-card w-100" style={{ maxWidth: '500px', border: '1px solid rgba(70, 69, 85, 0.4)' }}>
             <div className="d-flex justify-content-between align-items-center mb-4">
               <h5 className="text-white mb-0 fw-bold">{modalPolicy?.id ? 'Edit Policy' : 'Add New Policy'}</h5>

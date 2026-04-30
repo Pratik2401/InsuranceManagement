@@ -73,8 +73,8 @@ export default function LeadsPage() {
 
   const monthLeads = useMemo(() => {
     const raw = [...dataList];
-    raw.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    
+    raw.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
     const byMonth: Record<string, any> = {};
     raw.forEach(lead => {
       const parts = lead.date.split(' ');
@@ -86,7 +86,7 @@ export default function LeadsPage() {
       if (lead.status === 'Converted') byMonth[m].Converted += 1;
       else if (lead.status === 'Lost') byMonth[m].Lost += 1;
     });
-    
+
     // Return sorted keys or just array
     return Object.values(byMonth);
   }, [dataList]);
@@ -153,9 +153,9 @@ export default function LeadsPage() {
       }));
       setDataList(formatted);
       toast.success('Leads imported successfully!');
-    } catch (e) { 
+    } catch (e) {
       toast.error('Bulk import failed.');
-      console.error('Bulk import error:', e); 
+      console.error('Bulk import error:', e);
     }
   };
 
@@ -164,7 +164,7 @@ export default function LeadsPage() {
     try {
       if (modalLead.id) {
         await api.put(`/leads/${modalLead.id}`, { ...modalLead, status: normalizeLeadStatus(modalLead.status) });
-        setDataList(prev => prev.map(l => l.id === modalLead.id ? {...modalLead, date: new Date(modalLead.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} : l));
+        setDataList(prev => prev.map(l => l.id === modalLead.id ? { ...modalLead, date: new Date(modalLead.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) } : l));
         toast.success('Lead updated successfully!');
       } else {
         const payload = { ...modalLead, status: normalizeLeadStatus(modalLead.status), date: new Date().toISOString().split('T')[0] };
@@ -174,9 +174,9 @@ export default function LeadsPage() {
         toast.success('Lead added successfully!');
       }
       setIsModalOpen(false);
-    } catch (err: any) { 
+    } catch (err: any) {
       toast.error('An error occurred while saving the lead.');
-      console.error(err); 
+      console.error(err);
     }
   };
 
@@ -186,9 +186,9 @@ export default function LeadsPage() {
       await api.delete(`/leads/${id}`);
       setDataList(prev => prev.filter(l => l.id !== id));
       toast.success('Lead deleted successfully!');
-    } catch (err) { 
+    } catch (err) {
       toast.error('Failed to delete lead.');
-      console.error(err); 
+      console.error(err);
     }
   };
 
@@ -251,7 +251,7 @@ export default function LeadsPage() {
         <div className="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-3 mb-4">
           <p className="fw-bold text-white mb-0" style={{ fontSize: '0.95rem', fontFamily: 'Manrope, sans-serif' }}>Pipeline Roster</p>
           <div className="d-flex flex-wrap gap-2">
-            <button 
+            <button
               className="btn btn-sm d-flex align-items-center gap-2"
               style={{ background: 'rgba(79, 70, 229, 0.1)', color: '#c3c0ff', border: '1px solid rgba(79, 70, 229, 0.2)', fontWeight: 600, fontSize: '0.8rem', padding: '0.4rem 0.8rem' }}
               onClick={() => openModal()}
@@ -259,8 +259,8 @@ export default function LeadsPage() {
               <Plus size={14} />
               New Lead
             </button>
-            <ImportExcelButton 
-              onImport={handleImport} 
+            <ImportExcelButton
+              onImport={handleImport}
               columnMap={{
                 'Prospect': 'name', 'Contact': 'phone', 'Product Interest': 'product', 'Added On': 'date', 'Status': 'status'
               }}
@@ -272,8 +272,8 @@ export default function LeadsPage() {
                 { Prospect: 'Arjun Singh', Contact: '9870001234', 'Product Interest': 'Motor', 'Added On': '2025-05-18', Status: 'Converted' },
               ]}
             />
-            <ExportDropdown 
-              data={filteredAndSorted} 
+            <ExportDropdown
+              data={filteredAndSorted}
               filename="Leads_Export"
               columns={[
                 { header: 'Prospect', key: 'name' },
@@ -281,7 +281,7 @@ export default function LeadsPage() {
                 { header: 'Product Interest', key: 'product' },
                 { header: 'Added On', key: 'date' },
                 { header: 'Status', key: 'status' }
-              ]} 
+              ]}
             />
             <div className="search-box ms-lg-2" style={{ maxWidth: '200px' }}>
               <Search size={16} className="text-muted-custom" />
@@ -335,7 +335,7 @@ export default function LeadsPage() {
                       </button>
                     </td>
                   </tr>
-              ))}
+                ))}
             </tbody>
           </table>
         </div>
@@ -346,10 +346,10 @@ export default function LeadsPage() {
             <div className="pagination-info">
               Showing <span className="text-white fw-medium">{startIndex + 1}</span> to <span className="text-white fw-medium">{Math.min(startIndex + itemsPerPage, filteredAndSorted.length)}</span> of <span className="text-white fw-medium">{filteredAndSorted.length}</span> records
             </div>
-            
+
             <div className="pagination-controls">
-              <button 
-                className="btn-page" 
+              <button
+                className="btn-page"
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
               >
@@ -364,8 +364,8 @@ export default function LeadsPage() {
                   {idx + 1}
                 </button>
               ))}
-              <button 
-                className="btn-page" 
+              <button
+                className="btn-page"
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}
               >
@@ -378,7 +378,7 @@ export default function LeadsPage() {
 
       {/* Add/Edit Modal */}
       {isModalOpen && (
-        <div className="modal-backdrop bg-black bg-opacity-50 d-flex align-items-center justify-content-center" style={{ position: 'fixed', top: 0, left: 0, w: '100vw', h: '100vh', zIndex: 1050, width: '100vw', height: '100vh' }}>
+        <div className="modal-backdrop bg-black bg-opacity-50 d-flex align-items-center justify-content-center" style={{ position: 'fixed', top: 0, left: 0, zIndex: 1050, width: '100vw', height: '100vh' }}>
           <div className="dash-card w-100" style={{ maxWidth: '500px', border: '1px solid rgba(70, 69, 85, 0.4)' }}>
             <div className="d-flex justify-content-between align-items-center mb-4">
               <h5 className="text-white mb-0 fw-bold">{modalLead?.id ? 'Edit Lead' : 'Add New Lead'}</h5>
@@ -389,22 +389,22 @@ export default function LeadsPage() {
             <form onSubmit={handleSaveLead}>
               <div className="mb-3">
                 <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Prospect Name</label>
-                <input required className="form-control custom-select" value={modalLead?.name || ''} onChange={(e) => setModalLead({...modalLead, name: e.target.value})} />
+                <input required className="form-control custom-select" value={modalLead?.name || ''} onChange={(e) => setModalLead({ ...modalLead, name: e.target.value })} />
               </div>
               <div className="mb-3">
                 <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Contact Info</label>
-                <input required className="form-control custom-select" value={modalLead?.phone || ''} onChange={(e) => setModalLead({...modalLead, phone: e.target.value})} />
+                <input required className="form-control custom-select" value={modalLead?.phone || ''} onChange={(e) => setModalLead({ ...modalLead, phone: e.target.value })} />
               </div>
               <div className="mb-3">
                 <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Product Interest</label>
-                <select className="form-select custom-select" value={modalLead?.product || ''} onChange={(e) => setModalLead({...modalLead, product: e.target.value})}>
+                <select className="form-select custom-select" value={modalLead?.product || ''} onChange={(e) => setModalLead({ ...modalLead, product: e.target.value })}>
                   {products.length === 0 && <option value="General">General</option>}
                   {products.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
                 </select>
               </div>
               <div className="mb-4">
                 <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Status</label>
-                <select className="form-select custom-select" value={modalLead?.status || 'Open'} onChange={(e) => setModalLead({...modalLead, status: e.target.value})}>
+                <select className="form-select custom-select" value={modalLead?.status || 'Open'} onChange={(e) => setModalLead({ ...modalLead, status: e.target.value })}>
                   <option value="Open">Open</option>
                   <option value="Converted">Converted</option>
                   <option value="Lost">Lost</option>
