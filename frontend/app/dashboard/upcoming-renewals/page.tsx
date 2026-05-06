@@ -6,10 +6,12 @@ import { ExportDropdown } from '@/components/DataMobility';
 
 import api from '@/lib/axios';
 
-const TODAY = new Date('2025-04-15');
-
 function daysUntil(dateStr: string) {
-  return Math.ceil((new Date(dateStr).getTime() - TODAY.getTime()) / 86400000);
+  const TODAY = new Date();
+  TODAY.setHours(0, 0, 0, 0);
+  const target = new Date(dateStr);
+  target.setHours(0, 0, 0, 0);
+  return Math.ceil((target.getTime() - TODAY.getTime()) / 86400000);
 }
 
 function getStatus(days: number) {

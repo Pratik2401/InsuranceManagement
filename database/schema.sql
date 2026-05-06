@@ -68,6 +68,7 @@ CREATE TABLE policies (
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
     status ENUM('active', 'expired', 'cancelled', 'pending') DEFAULT 'pending',
+    is_renewal BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE

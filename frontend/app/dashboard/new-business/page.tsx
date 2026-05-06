@@ -21,6 +21,7 @@ const createEmptyPolicy = () => ({
   status: 'active',
   startDate: new Date().toISOString().split('T')[0],
   endDate: '',
+  isRenewal: false,
   pdfUrl: null,
   policyPdf: null,
 });
@@ -62,6 +63,7 @@ export default function NewBusinessPage() {
         policyType: p.policyType || '',
         renewalPeriod: p.renewalPeriod || 'Yearly',
         gwp: Number(p.gwp),
+        isRenewal: !!p.isRenewal,
         pdfUrl: p.pdfUrl ? `${API_ORIGIN}${p.pdfUrl}` : null,
       })));
       setProducts(resProducts.data);
@@ -80,6 +82,7 @@ export default function NewBusinessPage() {
       date: policy?.startDate || policy?.date || createEmptyPolicy().date,
       startDate: policy?.startDate || policy?.date || createEmptyPolicy().startDate,
       renewalPeriod: policy?.renewalPeriod || 'Yearly',
+      isRenewal: !!policy?.isRenewal,
       policyPdf: null,
     });
     setIsModalOpen(true);
@@ -175,6 +178,7 @@ export default function NewBusinessPage() {
       formData.append('date', modalPolicy.date || new Date().toISOString().split('T')[0]);
       formData.append('renewalPeriod', modalPolicy.renewalPeriod || 'Yearly');
       formData.append('status', modalPolicy.status || 'active');
+      formData.append('isRenewal', String(modalPolicy.isRenewal || false));
       if (modalPolicy.policyPdf instanceof File) {
         formData.append('policyPdf', modalPolicy.policyPdf);
       }
@@ -256,14 +260,14 @@ export default function NewBusinessPage() {
             <ImportExcelButton 
               onImport={handleImport} 
               columnMap={{
-                'Date': 'date', 'Policy No': 'number', 'Holder': 'holder', 'Company': 'company', 'Type': 'type', 'Policy Type': 'policyType', 'Renewal Period': 'renewalPeriod', 'GWP': 'gwp'
+                'Date': 'date', 'Policy No': 'number', 'Holder': 'holder', 'Company': 'company', 'Type': 'type', 'Policy Type': 'policyType', 'Renewal Period': 'renewalPeriod', 'GWP': 'gwp', 'Is Renewal': 'isRenewal'
               }}
               dummyRows={[
-                { Date: '2025-01-15', 'Policy No': 'POL-2025-0001', Holder: 'Ramesh Sharma', Company: 'HDFC ERGO', Type: 'Motor', 'Policy Type': 'Comprehensive', 'Renewal Period': 'Yearly', GWP: 18500 },
-                { Date: '2025-02-03', 'Policy No': 'POL-2025-0002', Holder: 'Priya Iyer', Company: 'ICICI Lombard', Type: 'Health', 'Policy Type': 'Individual Mediclaim', 'Renewal Period': 'Monthly', GWP: 12200 },
-                { Date: '2025-03-20', 'Policy No': 'POL-2025-0003', Holder: 'Anil Mehta', Company: 'SBI General', Type: 'Life', 'Policy Type': 'Term Plan', 'Renewal Period': 'Yearly', GWP: 9800 },
-                { Date: '2025-04-11', 'Policy No': 'POL-2025-0004', Holder: 'Sunita Rao', Company: 'Bajaj Allianz', Type: 'Motor', 'Policy Type': 'Third Party', 'Renewal Period': 'Monthly', GWP: 6500 },
-                { Date: '2025-05-08', 'Policy No': 'POL-2025-0005', Holder: 'Vikram Nair', Company: 'New India Assurance', Type: 'General', 'Policy Type': 'Fire & Burglary', 'Renewal Period': 'Yearly', GWP: 22000 },
+                { Date: '2025-01-15', 'Policy No': 'POL-2025-0001', Holder: 'Ramesh Sharma', Company: 'HDFC ERGO', Type: 'Motor', 'Policy Type': 'Comprehensive', 'Renewal Period': 'Yearly', GWP: 18500, 'Is Renewal': false },
+                { Date: '2025-02-03', 'Policy No': 'POL-2025-0002', Holder: 'Priya Iyer', Company: 'ICICI Lombard', Type: 'Health', 'Policy Type': 'Individual Mediclaim', 'Renewal Period': 'Monthly', GWP: 12200, 'Is Renewal': false },
+                { Date: '2025-03-20', 'Policy No': 'POL-2025-0003', Holder: 'Anil Mehta', Company: 'SBI General', Type: 'Life', 'Policy Type': 'Term Plan', 'Renewal Period': 'Yearly', GWP: 9800, 'Is Renewal': true },
+                { Date: '2025-04-11', 'Policy No': 'POL-2025-0004', Holder: 'Sunita Rao', Company: 'Bajaj Allianz', Type: 'Motor', 'Policy Type': 'Third Party', 'Renewal Period': 'Monthly', GWP: 6500, 'Is Renewal': true },
+                { Date: '2025-05-08', 'Policy No': 'POL-2025-0005', Holder: 'Vikram Nair', Company: 'New India Assurance', Type: 'General', 'Policy Type': 'Fire & Burglary', 'Renewal Period': 'Yearly', GWP: 22000, 'Is Renewal': false },
               ]}
             />
             <ExportDropdown 
@@ -276,7 +280,8 @@ export default function NewBusinessPage() {
                 { header: 'Insurer', key: 'company' },
                 { header: 'Type', key: 'type' },
                 { header: 'Renewal Period', key: 'renewalPeriod' },
-                { header: 'GWP', key: 'gwp' }
+                { header: 'GWP', key: 'gwp' },
+                { header: 'Is Renewal', key: 'isRenewal' }
               ]} 
             />
           </div>
@@ -315,7 +320,7 @@ export default function NewBusinessPage() {
                 <th>Product</th>
                 <th className="sortable-th" onClick={() => handleSort('company')}>Insurer <SortIcon columnKey="company" /></th>
                 <th>Type</th>
-                <th>Renewal</th>
+                <th>Renewal / New</th>
                 <th>PDF</th>
                 <th className="sortable-th text-end" onClick={() => handleSort('gwp')}>GWP <SortIcon columnKey="gwp" /></th>
                 <th className="text-end">Actions</th>
@@ -332,7 +337,9 @@ export default function NewBusinessPage() {
                     <td><span className={`stat-badge ${typeBadge[row.type] || 'bg-secondary bg-opacity-10 text-secondary'}`}>{row.type}</span></td>
                     <td className="text-muted-custom">{row.company}</td>
                     <td className="text-muted-custom">{row.policyType}</td>
-                    <td className="text-muted-custom">{row.renewalPeriod || 'Yearly'}</td>
+                    <td className="text-muted-custom">
+                      {row.isRenewal ? <span className="badge bg-success bg-opacity-10 text-success">Renewal</span> : <span className="badge bg-primary bg-opacity-10 text-primary">New</span>}
+                    </td>
                     <td className="text-muted-custom text-nowrap">
                       {row.pdfUrl ? <a href={row.pdfUrl} target="_blank" rel="noreferrer" className="text-brand">View PDF</a> : '—'}
                     </td>
@@ -447,6 +454,18 @@ export default function NewBusinessPage() {
                     <option value="Yearly">Yearly</option>
                   </select>
                 </div>
+              </div>
+              <div className="mb-3 form-check px-0 d-flex align-items-center gap-2">
+                <input 
+                  type="checkbox" 
+                  className="form-check-input mt-0" 
+                  id="isRenewalCheck"
+                  checked={modalPolicy?.isRenewal || false}
+                  onChange={(e) => setModalPolicy({...modalPolicy, isRenewal: e.target.checked})}
+                />
+                <label className="form-check-label text-muted-custom" htmlFor="isRenewalCheck" style={{ fontSize: '0.8rem' }}>
+                  Mark as Renewal Policy
+                </label>
               </div>
               <div className="mb-4">
                 <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Policy PDF</label>

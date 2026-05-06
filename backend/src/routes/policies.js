@@ -137,6 +137,7 @@ function mapPolicyRow(row) {
     number: row.number || '',
     gwp: Number(row.gwp || 0),
     status: displayPolicyStatus(row.status),
+    isRenewal: !!row.is_renewal,
     pdfUrl: buildPolicyPdfUrl(row.id),
   };
 }
@@ -159,7 +160,8 @@ router.get('/', async (req, res) => {
         COALESCE(CONCAT(c.first_name, ' ', c.last_name), '') as holder,
         p.policy_number as number,
         p.premium_amount as gwp,
-        p.status
+        p.status,
+        p.is_renewal
       FROM policies p
       LEFT JOIN customers c ON p.customer_id = c.id
       ORDER BY p.start_date DESC
@@ -193,6 +195,8 @@ router.post('/', upload.single('policyPdf'), async (req, res) => {
       renewalPeriod,
       renewal_period,
       status,
+      isRenewal,
+      is_renewal,
     } = req.body;
 
     const resolvedHolder = holder || req.body.customerName || '';
@@ -203,9 +207,10 @@ router.post('/', upload.single('policyPdf'), async (req, res) => {
     const resolvedCustomerId = await getOrCreateCustomer(resolvedHolder, customer_id);
     const resolvedPremium = Number(gwp ?? premium_amount ?? 0);
     const resolvedPolicyType = policyType || policy_type || 'Other';
+    const resolvedIsRenewal = isRenewal === 'true' || isRenewal === true || is_renewal === 'true' || is_renewal === true;
     const insertQuery = `
-      INSERT INTO policies (policy_number, customer_id, type, company, policy_type, premium_amount, coverage_amount, start_date, end_date, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO policies (policy_number, customer_id, type, company, policy_type, premium_amount, coverage_amount, start_date, end_date, status, is_renewal)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     const [result] = await pool.query(insertQuery, [
       policy_number,
@@ -218,6 +223,7 @@ router.post('/', upload.single('policyPdf'), async (req, res) => {
       resolvedStartDate,
       resolvedEndDate,
       resolvedStatus,
+      resolvedIsRenewal,
     ]);
 
     await persistPolicyPdf(result.insertId, req.file);
@@ -254,11 +260,12 @@ router.post('/bulk', async (req, res) => {
       const resolvedStartDate = normalizeDate(policy.date || policy.startDate || policy.start_date);
       const resolvedRenewalPeriod = normalizeRenewalPeriod(policy.renewalPeriod || policy.renewal_period);
       const resolvedEndDate = normalizeDate(policy.endDate || policy.end_date || addRenewalPeriod(resolvedStartDate, resolvedRenewalPeriod));
+      const resolvedIsRenewal = policy.isRenewal === 'true' || policy.isRenewal === true || policy.is_renewal === 'true' || policy.is_renewal === true;
 
       const [result] = await pool.query(
         `
-          INSERT INTO policies (policy_number, customer_id, type, company, policy_type, premium_amount, coverage_amount, start_date, end_date, status)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO policies (policy_number, customer_id, type, company, policy_type, premium_amount, coverage_amount, start_date, end_date, status, is_renewal)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           policy.number || policy.policy_number,
@@ -271,6 +278,7 @@ router.post('/bulk', async (req, res) => {
           resolvedStartDate,
           resolvedEndDate,
           normalizePolicyStatus(policy.status),
+          resolvedIsRenewal,
         ]
       );
 
@@ -310,6 +318,8 @@ router.put('/:id', upload.single('policyPdf'), async (req, res) => {
       renewalPeriod,
       renewal_period,
       status,
+      isRenewal,
+      is_renewal,
     } = req.body;
 
     const resolvedNumber = number || policy_number || existingRows[0].policy_number;
@@ -318,10 +328,11 @@ router.put('/:id', upload.single('policyPdf'), async (req, res) => {
     const resolvedRenewalPeriod = normalizeRenewalPeriod(renewalPeriod || renewal_period || 'Yearly');
     const resolvedEndDate = normalizeDate(endDate || end_date || addRenewalPeriod(resolvedStartDate, resolvedRenewalPeriod));
     const resolvedCustomerId = await getOrCreateCustomer(resolvedHolder || `${existingRows[0].policy_number} Holder`, existingRows[0].customer_id);
+    const resolvedIsRenewal = isRenewal !== undefined ? (isRenewal === 'true' || isRenewal === true) : !!existingRows[0].is_renewal;
 
     const updateQuery = `
       UPDATE policies 
-      SET policy_number = ?, customer_id = ?, type = ?, company = ?, policy_type = ?, premium_amount = ?, coverage_amount = ?, start_date = ?, end_date = ?, status = ?
+      SET policy_number = ?, customer_id = ?, type = ?, company = ?, policy_type = ?, premium_amount = ?, coverage_amount = ?, start_date = ?, end_date = ?, status = ?, is_renewal = ?
       WHERE id = ?
     `;
     
@@ -336,6 +347,7 @@ router.put('/:id', upload.single('policyPdf'), async (req, res) => {
       resolvedStartDate,
       resolvedEndDate,
       normalizePolicyStatus(status || existingRows[0].status),
+      resolvedIsRenewal,
       id,
     ]);
     

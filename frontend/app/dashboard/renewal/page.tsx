@@ -19,7 +19,7 @@ export default function RenewalPage() {
     async function load() {
       try {
         const res = await api.get('/policies');
-        const policies = res.data;
+        const policies = res.data.filter((p: any) => p.isRenewal === true);
 
         // Populate table records
         const formatted = policies.map((p: any) => ({
