@@ -1,10 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
-const { verifyToken } = require('../middleware/auth');
+const { verifyToken, requireAgent } = require('../middleware/auth');
+const { logAudit } = require('../middleware/audit');
 
-// Protect all routes with authentication middleware
-router.use(verifyToken);
+// Protect all routes with authentication middleware and limit to agents
+router.use(verifyToken, requireAgent);
 
 // GET all products
 router.get('/', async (req, res) => {
@@ -30,6 +31,8 @@ router.post('/', async (req, res) => {
       'INSERT INTO products (name, description) VALUES (?, ?)',
       [name, description || '']
     );
+
+    try { await logAudit(req.user?.id, 'product.create', 'product', result.insertId, { name }); } catch (e) {}
 
     res.status(201).json({ 
       id: result.insertId, 
@@ -64,6 +67,7 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ message: 'Product not found' });
     }
 
+    try { await logAudit(req.user?.id, 'product.update', 'product', id, { name }); } catch (e) {}
     res.json({ id, name, description });
   } catch (error) {
     console.error('Error updating product:', error);
@@ -83,6 +87,7 @@ router.delete('/:id', async (req, res) => {
     if (result.affectedRows === 0) {
       return res.status(404).json({ message: 'Product not found' });
     }
+    try { await logAudit(req.user?.id, 'product.delete', 'product', id); } catch (e) {}
     res.json({ message: 'Product deleted successfully' });
   } catch (error) {
     console.error('Error deleting product:', error);
@@ -110,6 +115,7 @@ router.post('/bulk', async (req, res) => {
     ]);
 
     const [result] = await pool.query(insertQuery, [values]);
+    try { await logAudit(req.user?.id, 'product.bulk_import', 'product', null, { count: products.length }); } catch (e) {}
     res.status(201).json({ message: 'Products imported successfully', count: result.affectedRows });
   } catch (error) {
     console.error('Error bulk creating products:', error);

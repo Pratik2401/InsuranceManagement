@@ -22,9 +22,13 @@ router.get('/health', async (req, res) => {
 
 // Mount feature routes
 router.use('/auth', require('./auth'));
+router.use('/admin', require('./admin'));
 router.use('/leads', require('./leads'));
 router.use('/policies', require('./policies'));
 router.use('/products', require('./products'));
+router.use('/customers', require('./customers'));
+router.use('/claims', require('./claims'));
+router.use('/payments', require('./payments'));
 
 // Export AFTER all route mounts
 module.exports = router;

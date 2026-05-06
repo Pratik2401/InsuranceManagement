@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api',
+  baseURL: process.env.NEXT_PUBLIC_API_URL || '/api',
   headers: {
     'Content-Type': 'application/json',
   },
@@ -19,12 +19,14 @@ api.interceptors.request.use(
 
     if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
       if (config.headers) {
-        if (typeof (config.headers as any).delete === 'function') {
-          (config.headers as any).delete('Content-Type');
-          (config.headers as any).delete('content-type');
+        const headers = config.headers as { delete?: (name: string) => void } & Record<string, string | undefined>;
+
+        if (typeof headers.delete === 'function') {
+          headers.delete('Content-Type');
+          headers.delete('content-type');
         } else {
-          delete (config.headers as any)['Content-Type'];
-          delete (config.headers as any)['content-type'];
+          delete headers['Content-Type'];
+          delete headers['content-type'];
         }
       }
     }

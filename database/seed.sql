@@ -2,8 +2,14 @@
 
 -- Seed Users (Passwords are hashed 'password123' using bcrypt)
 INSERT INTO users (name, email, password, role) VALUES 
-('Admin User', 'admin@example.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'admin'),
+('Admin User', 'admin@example.com', '$2b$12$MAICeNPoCdNYcSYlgWvR8ueoLDCkOTjitJYDij02qxETsY.mBqcMq', 'admin'),
 ('John Agent', 'agent@example.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'agent');
+
+-- Seed App Settings
+INSERT INTO app_settings (setting_key, setting_value, category, description, updated_by) VALUES
+('support_email', 'support@insureflow.com', 'company', 'Primary support contact for the software', 1),
+('renewal_alert_days', '30', 'workflow', 'Days before expiry when renewal alerts should trigger', 1),
+('maintenance_mode', 'off', 'system', 'Turn on to show maintenance mode messaging', 1);
 
 -- Seed Customers
 INSERT INTO customers (first_name, last_name, email, phone, dob, address) VALUES 
@@ -28,5 +34,5 @@ INSERT INTO payments (policy_id, amount, payment_date, payment_method, status, t
 -- Seed Leads
 INSERT INTO leads (name, phone, product, status, date) VALUES 
 ('Rahul Verma', '+91 98765 43210', 'Motor Comprehensive', 'Converted', '2025-04-14'),
-('Neha Sharma', '+91 87654 32109', 'Family Floater', 'Active', '2025-04-13'),
-('Sameer Khan', '+91 76543 21098', 'Term Life', 'Active', '2025-04-12');
+('Neha Sharma', '+91 87654 32109', 'Family Floater', 'Open', '2025-04-13'),
+('Sameer Khan', '+91 76543 21098', 'Term Life', 'Open', '2025-04-12');

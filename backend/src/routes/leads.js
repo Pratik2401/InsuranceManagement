@@ -1,6 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
+const { verifyToken, requireAgent } = require('../middleware/auth');
+const { logAudit } = require('../middleware/audit');
+
+// Protect leads routes: only agents may access lead endpoints
+router.use(verifyToken, requireAgent);
 
 function normalizeLeadStatus(status) {
   const value = String(status || 'Open').trim().toLowerCase();
@@ -41,6 +46,7 @@ router.post('/', async (req, res) => {
     `;
     const resolvedStatus = normalizeLeadStatus(status);
     const [result] = await pool.query(insertQuery, [name, phone, product, resolvedStatus, date]);
+    try { await logAudit(req.user?.id, 'lead.create', 'lead', result.insertId, { name, product }); } catch (e) {}
     res.status(201).json({ id: result.insertId, name, phone, product, status: resolvedStatus, date });
   } catch (error) {
     console.error('Error creating lead:', error);
@@ -70,6 +76,7 @@ router.post('/bulk', async (req, res) => {
     ]);
 
     const [result] = await pool.query(insertQuery, [values]);
+    try { await logAudit(req.user?.id, 'lead.bulk_import', 'lead', null, { count: leads.length }); } catch (e) {}
     res.status(201).json({ message: 'Leads imported successfully', count: result.affectedRows });
   } catch (error) {
     console.error('Error bulk creating leads:', error);
@@ -93,6 +100,7 @@ router.put('/:id', async (req, res) => {
     if (result.affectedRows === 0) {
       return res.status(404).json({ message: 'Lead not found' });
     }
+    try { await logAudit(req.user?.id, 'lead.update', 'lead', id, { name, product }); } catch (e) {}
     res.json({ id, name, phone, product, status: normalizeLeadStatus(status), date });
   } catch (error) {
     console.error('Error updating lead:', error);
@@ -109,6 +117,7 @@ router.delete('/:id', async (req, res) => {
     if (result.affectedRows === 0) {
       return res.status(404).json({ message: 'Lead not found' });
     }
+    try { await logAudit(req.user?.id, 'lead.delete', 'lead', id); } catch (e) {}
     res.json({ message: 'Lead deleted successfully' });
   } catch (error) {
     console.error('Error deleting lead:', error);

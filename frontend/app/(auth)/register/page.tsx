@@ -16,7 +16,6 @@ const schema = z.object({
   email: z.string().email('Enter a valid email address'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
   confirmPassword: z.string(),
-  role: z.enum(['agent', 'admin']),
 }).refine((d) => d.password === d.confirmPassword, {
   message: "Passwords don't match",
   path: ['confirmPassword'],
@@ -38,7 +37,6 @@ export default function RegisterPage() {
     formState: { errors, isSubmitting },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { role: 'agent' },
   });
 
   const passwordValue = watch('password', '');
@@ -60,7 +58,6 @@ export default function RegisterPage() {
         name: data.name,
         email: data.email,
         password: data.password,
-        role: data.role,
       });
       login(res.data.token, res.data.user);
       router.push('/dashboard');
@@ -120,19 +117,6 @@ export default function RegisterPage() {
             {errors.email && <p className="auth-field-error">{errors.email.message}</p>}
           </div>
 
-          {/* Role */}
-          <div className="auth-field">
-            <label className="auth-label">Role</label>
-            <div className="auth-role-group">
-              {(['agent', 'admin'] as const).map((r) => (
-                <label key={r} className="auth-role-option">
-                  <input type="radio" value={r} {...register('role')} className="auth-role-radio" />
-                  <span className="auth-role-label">{r === 'agent' ? '🧑‍💼 Agent' : '👑 Admin'}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-
           {/* Password */}
           <div className="auth-field">
             <label className="auth-label" htmlFor="reg-password">Password</label>
@@ -187,7 +171,12 @@ export default function RegisterPage() {
 
         <p className="auth-switch">
           Already have an account?{' '}
-          <Link href="/login" className="auth-switch-link">Sign in</Link>
+          <Link href="/login" className="auth-switch-link">Sign in as agent</Link>
+        </p>
+
+        <p className="auth-switch" style={{ marginTop: '-0.25rem' }}>
+          Admin access?{' '}
+          <Link href="/admin/login" className="auth-switch-link">Use admin login</Link>
         </p>
       </div>
     </div>

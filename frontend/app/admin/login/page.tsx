@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { AlertCircle, Eye, EyeOff, Loader2, Lock, Mail, Shield } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/axios';
-import './login.css';
+import '../../(auth)/auth.css';
 
 const schema = z.object({
   email: z.string().email('Enter a valid email address'),
@@ -18,7 +18,7 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>;
 
-export default function LoginPage() {
+export default function AdminLoginPage() {
   const router = useRouter();
   const { login } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
@@ -34,13 +34,14 @@ export default function LoginPage() {
     setServerError('');
     try {
       const res = await api.post('/auth/login', data);
-      login(res.data.token, res.data.user);
-      if (res.data.user?.role === 'admin') {
-        router.push('/dashboard/admin');
+
+      if (res.data.user?.role !== 'admin') {
+        setServerError('Admin account required. Please use the agent login if this is not an admin account.');
         return;
       }
 
-      router.push('/dashboard');
+      login(res.data.token, res.data.user);
+      router.push('/dashboard/admin');
     } catch (err: unknown) {
       const message =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
@@ -51,26 +52,23 @@ export default function LoginPage() {
 
   return (
     <div className="auth-page">
-      {/* Ambient blobs */}
       <div className="auth-blob auth-blob--1" />
       <div className="auth-blob auth-blob--2" />
 
       <div className="auth-card">
-        {/* Logo */}
         <div className="auth-logo">
           <div className="auth-logo-icon">
             <Shield size={22} />
           </div>
           <div>
             <p className="auth-brand-name">InsureFlow</p>
-            <p className="auth-brand-sub">Management Suite</p>
+            <p className="auth-brand-sub">Admin Access</p>
           </div>
         </div>
 
-        <h1 className="auth-title">Agent sign in</h1>
-        <p className="auth-subtitle">Sign in as an agent to continue</p>
+        <h1 className="auth-title">Admin sign in</h1>
+        <p className="auth-subtitle">Sign in as the administrator of the software</p>
 
-        {/* Error */}
         {serverError && (
           <div className="auth-error">
             <AlertCircle size={15} />
@@ -79,15 +77,14 @@ export default function LoginPage() {
         )}
 
         <form onSubmit={handleSubmit(onSubmit)} noValidate>
-          {/* Email */}
           <div className="auth-field">
-            <label className="auth-label" htmlFor="login-email">Email address</label>
+            <label className="auth-label" htmlFor="admin-login-email">Email address</label>
             <div className={`auth-input-wrap ${errors.email ? 'error' : ''}`}>
               <Mail size={16} className="auth-input-icon" />
               <input
-                id="login-email"
+                id="admin-login-email"
                 type="email"
-                placeholder="you@example.com"
+                placeholder="admin@example.com"
                 className="auth-input"
                 {...register('email')}
               />
@@ -95,16 +92,15 @@ export default function LoginPage() {
             {errors.email && <p className="auth-field-error">{errors.email.message}</p>}
           </div>
 
-          {/* Password */}
           <div className="auth-field">
             <div className="auth-label-row">
-              <label className="auth-label" htmlFor="login-password">Password</label>
+              <label className="auth-label" htmlFor="admin-login-password">Password</label>
               <Link href="/forgot-password" className="auth-forgot-link">Forgot password?</Link>
             </div>
             <div className={`auth-input-wrap ${errors.password ? 'error' : ''}`}>
               <Lock size={16} className="auth-input-icon" />
               <input
-                id="login-password"
+                id="admin-login-password"
                 type={showPassword ? 'text' : 'password'}
                 placeholder="••••••••"
                 className="auth-input"
@@ -124,26 +120,21 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            id="login-submit-btn"
+            id="admin-login-submit-btn"
             className="auth-btn"
             disabled={isSubmitting}
           >
             {isSubmitting ? (
               <><Loader2 size={16} className="auth-spinner" /> Signing in…</>
             ) : (
-              'Sign In'
+              'Sign In as Admin'
             )}
           </button>
         </form>
 
         <p className="auth-switch">
-          Don&apos;t have an account?{' '}
-          <Link href="/register" className="auth-switch-link">Create agent account</Link>
-        </p>
-
-        <p className="auth-switch" style={{ marginTop: '-0.25rem' }}>
-          Admin access?{' '}
-          <Link href="/admin/login" className="auth-switch-link">Sign in as admin</Link>
+          Agent login?{' '}
+          <Link href="/login" className="auth-switch-link">Go to agent sign in</Link>
         </p>
       </div>
     </div>

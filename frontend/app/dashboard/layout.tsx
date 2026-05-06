@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard, FilePlus, RefreshCcw, Clock,
-  Users, BarChart3, Menu, X, Shield, LogOut, Package
+  Users, BarChart3, Menu, X, Shield, LogOut, Package, Settings2
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
@@ -17,6 +17,10 @@ const navItems = [
   { href: '/dashboard/leads',             label: 'Leads',              icon: Users },
   { href: '/dashboard/business',          label: 'Business Analytics', icon: BarChart3 },
   { href: '/dashboard/products',          label: 'Products',           icon: Package },
+  { href: '/dashboard/admin',             label: 'Admin Panel',        icon: Settings2, adminOnly: true },
+  { href: '/dashboard/admin/users',       label: 'Admin Users',        icon: Users, adminOnly: true },
+  { href: '/dashboard/admin/settings',    label: 'Admin Settings',     icon: Settings2, adminOnly: true },
+  { href: '/dashboard/admin/audit',       label: 'Audit Logs',         icon: Clock, adminOnly: true },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -25,7 +29,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
   const { user, isLoading, logout } = useAuth();
 
-  const pageTitle = navItems.find((n) => n.href === pathname)?.label ?? 'Dashboard';
+  const agentNavItems = navItems.filter((item) => !item.adminOnly);
+  const adminNavItems = navItems.filter((item) => item.adminOnly);
+  const visibleNavItems = user?.role === 'admin' ? adminNavItems : agentNavItems;
+  const activeNavItem = visibleNavItems
+    .filter((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))
+    .sort((a, b) => b.href.length - a.href.length)[0];
+  const pageTitle = activeNavItem?.label ?? 'Dashboard';
 
   // Auth guard – redirect to login if not authenticated
   useEffect(() => {
@@ -36,6 +46,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       }
     }
   }, [isLoading, user, router]);
+
+  useEffect(() => {
+    if (!isLoading && user) {
+      // Prevent agents from accessing admin pages
+      if (pathname.startsWith('/dashboard/admin') && user.role !== 'admin') {
+        router.replace('/dashboard');
+        return;
+      }
+      // Prevent admins from accessing agent pages
+      if (user.role === 'admin' && !pathname.startsWith('/dashboard/admin')) {
+        router.replace('/dashboard/admin');
+        return;
+      }
+    }
+  }, [isLoading, pathname, router, user]);
 
   const handleLogout = () => {
     logout();
@@ -103,11 +128,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Navigation */}
         <nav className="sidebar-nav">
           <p className="nav-section-label">Main Menu</p>
-          {navItems.map(({ href, label, icon: Icon }) => (
+          {visibleNavItems.map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
               href={href}
-              className={`sidebar-link${pathname === href ? ' active' : ''}`}
+              className={`sidebar-link${pathname === href || pathname.startsWith(`${href}/`) ? ' active' : ''}`}
               onClick={() => setOpen(false)}
             >
               <Icon size={16} />

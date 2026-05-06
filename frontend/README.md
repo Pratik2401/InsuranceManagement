@@ -34,3 +34,14 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Cloudflare Tunnel
+
+The frontend now proxies `/api/*` requests through Next.js, so one Cloudflare Tunnel can expose the whole software.
+
+1. Start the backend on `http://localhost:5000`.
+2. Start the frontend with `npm run dev`.
+3. In a second terminal, run `npm run tunnel` from this folder.
+4. If your backend is hosted elsewhere, set `BACKEND_API_URL` before starting the frontend, for example `http://your-backend-host:5000/api`.
+
+The admin panel is available at `/dashboard/admin` for users with the `admin` role.

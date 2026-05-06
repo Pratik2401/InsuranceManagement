@@ -21,4 +21,20 @@ const verifyToken = (req, res, next) => {
   }
 };
 
-module.exports = { verifyToken };
+const requireAdmin = (req, res, next) => {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ message: 'Admin access required.' });
+  }
+
+  return next();
+};
+
+const requireAgent = (req, res, next) => {
+  if (!req.user || req.user.role !== 'agent') {
+    return res.status(403).json({ message: 'Agent access required.' });
+  }
+
+  return next();
+};
+
+module.exports = { verifyToken, requireAdmin, requireAgent };

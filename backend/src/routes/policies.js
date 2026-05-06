@@ -4,6 +4,11 @@ const path = require('path');
 const multer = require('multer');
 const router = express.Router();
 const pool = require('../config/db');
+const { verifyToken, requireAgent } = require('../middleware/auth');
+const { logAudit } = require('../middleware/audit');
+
+// Protect policy routes: only agents may access policy endpoints
+router.use(verifyToken, requireAgent);
 
 const uploadDir = path.join(__dirname, '../../uploads/policies');
 fs.mkdirSync(uploadDir, { recursive: true });
@@ -227,6 +232,7 @@ router.post('/', upload.single('policyPdf'), async (req, res) => {
     ]);
 
     await persistPolicyPdf(result.insertId, req.file);
+    try { await logAudit(req.user?.id, 'policy.create', 'policy', result.insertId, { policy_number }); } catch (e) {}
 
     res.status(201).json({
       id: result.insertId,
@@ -284,7 +290,7 @@ router.post('/bulk', async (req, res) => {
 
       count += result.affectedRows;
     }
-
+    try { await logAudit(req.user?.id, 'policy.bulk_import', 'policy', null, { count: policies.length }); } catch (e) {}
     res.status(201).json({ message: 'Policies imported successfully', count });
   } catch (error) {
     console.error('Error bulk creating policies:', error);
@@ -357,6 +363,8 @@ router.put('/:id', upload.single('policyPdf'), async (req, res) => {
 
     await persistPolicyPdf(id, req.file);
 
+    try { await logAudit(req.user?.id, 'policy.update', 'policy', id, { policy_number: resolvedNumber }); } catch (e) {}
+
     res.json({
       message: 'Policy updated successfully',
       id: Number(id),
@@ -388,6 +396,7 @@ router.delete('/:id', async (req, res) => {
       await fs.promises.unlink(pdfPath);
     }
 
+    try { await logAudit(req.user?.id, 'policy.delete', 'policy', id); } catch (e) {}
     res.json({ message: 'Policy deleted successfully' });
   } catch (error) {
     console.error('Error deleting policy:', error);

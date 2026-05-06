@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const Brevo = require('@getbrevo/brevo');
 const pool = require('../config/db');
 const { verifyToken } = require('../middleware/auth');
+const { logAudit } = require('../middleware/audit');
 
 // ─── Helper: Generate 6-digit OTP ───────────────────────────────────────────
 const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
@@ -38,7 +39,7 @@ const sendOTPEmail = async (toEmail, otp) => {
 // ─── POST /api/auth/register ─────────────────────────────────────────────────
 router.post('/register', async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password } = req.body;
 
     if (!name || !email || !password) {
       return res.status(400).json({ message: 'Name, email, and password are required.' });
@@ -51,12 +52,15 @@ router.post('/register', async (req, res) => {
     }
 
     const hashedPassword = await bcrypt.hash(password, 12);
-    const userRole = role === 'admin' ? 'admin' : 'agent';
+    const userRole = 'agent';
 
     const [result] = await pool.query(
       'INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)',
       [name, email, hashedPassword, userRole]
     );
+
+    // Audit: user registration
+    try { await logAudit(result.insertId, 'user.register', 'user', result.insertId, { email }); } catch (e) {}
 
     const token = jwt.sign(
       { id: result.insertId, name, email, role: userRole },
@@ -90,6 +94,9 @@ router.post('/login', async (req, res) => {
     }
 
     const user = rows[0];
+    if (Number(user.is_active ?? 1) === 0) {
+      return res.status(403).json({ message: 'This account is inactive. Contact an administrator.' });
+    }
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(401).json({ message: 'Invalid email or password.' });
@@ -101,10 +108,15 @@ router.post('/login', async (req, res) => {
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
 
+    await pool.query('UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?', [user.id]);
+
+    // Audit: successful login
+    try { await logAudit(user.id, 'user.login.success', 'user', user.id, { email: user.email }); } catch (e) {}
+
     res.json({
       message: 'Login successful.',
       token,
-      user: { id: user.id, name: user.name, email: user.email, role: user.role },
+      user: { id: user.id, name: user.name, email: user.email, role: user.role, isActive: Number(user.is_active ?? 1) === 1 },
     });
   } catch (err) {
     console.error('Login error:', err);
@@ -203,10 +215,13 @@ router.post('/reset-password', async (req, res) => {
 router.get('/me', verifyToken, async (req, res) => {
   try {
     const [rows] = await pool.query(
-      'SELECT id, name, email, role, created_at FROM users WHERE id = ?',
+      'SELECT id, name, email, role, is_active, created_at FROM users WHERE id = ?',
       [req.user.id]
     );
     if (rows.length === 0) return res.status(404).json({ message: 'User not found.' });
+    if (Number(rows[0].is_active ?? 1) === 0) {
+      return res.status(403).json({ message: 'This account is inactive.' });
+    }
     res.json({ user: rows[0] });
   } catch (err) {
     console.error('Get me error:', err);
