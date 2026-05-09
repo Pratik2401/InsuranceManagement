@@ -20,7 +20,13 @@ sudo mkdir -p /var/www
 sudo chown ubuntu:ubuntu /var/www
 git clone <your-repo-url> /var/www/snap2eat
 cd /var/www/snap2eat
-bash deploy/scripts/setup-server.sh
+sudo bash deploy/scripts/setup-server.sh
+```
+
+If you want to run it directly with `./setup-server.sh`, make it executable first:
+
+```bash
+chmod +x deploy/scripts/setup-server.sh
 ```
 
 4. Create `backend/.env` on the server with your production values.

@@ -31,7 +31,15 @@ fi
 export DEBIAN_FRONTEND=noninteractive
 
 apt-get update
-apt-get install -y curl gnupg ca-certificates lsb-release software-properties-common git nginx mysql-server rsync build-essential
+apt-get install -y curl gnupg ca-certificates lsb-release software-properties-common git nginx rsync build-essential
+
+apt-get install -y mysql-server || {
+  dpkg --configure -a
+  apt-get -f install -y
+  apt-get install -y mysql-server
+}
+
+apt-get -f install -y
 
 install_node=false
 if command -v node >/dev/null 2>&1; then
