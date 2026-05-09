@@ -43,6 +43,18 @@ fi
 if [[ -d "$APP_DIR/frontend/.next/standalone" ]]; then
   echo "Detected Next standalone build at $APP_DIR/frontend/.next/standalone"
   FRONTEND_MODE="standalone"
+
+  # Next standalone expects static assets and public files alongside server.js.
+  if [[ -d "$APP_DIR/frontend/.next/static" ]]; then
+    mkdir -p "$APP_DIR/frontend/.next/standalone/.next"
+    rm -rf "$APP_DIR/frontend/.next/standalone/.next/static"
+    cp -a "$APP_DIR/frontend/.next/static" "$APP_DIR/frontend/.next/standalone/.next/static"
+  fi
+
+  if [[ -d "$APP_DIR/frontend/public" ]]; then
+    rm -rf "$APP_DIR/frontend/.next/standalone/public"
+    cp -a "$APP_DIR/frontend/public" "$APP_DIR/frontend/.next/standalone/public"
+  fi
 else
   echo "No standalone bundle found at $APP_DIR/frontend/.next/standalone"
   echo "Upload the standalone build from your local machine:"
@@ -76,7 +88,7 @@ echo "Starting/restarting frontend process with PM2"
 if npx --yes pm2 describe snap2eat-frontend >/dev/null 2>&1; then
   npx --yes pm2 delete snap2eat-frontend || true
 fi
-npx --yes pm2 start bash --name snap2eat-frontend --cwd "$APP_DIR/frontend" -- -lc 'set -a; if [ -f ./.env ]; then . ./.env; fi; set +a; exec node .next/standalone/server.js' --update-env || true
+npx --yes pm2 start bash --name snap2eat-frontend --cwd "$APP_DIR/frontend/.next/standalone" -- -lc 'set -a; if [ -f ../.env ]; then . ../.env; elif [ -f ./.env ]; then . ./.env; fi; set +a; exec node server.js' --update-env || true
 
 npx --yes pm2 save || true
 
