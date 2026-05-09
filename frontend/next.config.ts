@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  output: 'standalone',
+
   async rewrites() {
     const backendApiUrl = (process.env.BACKEND_API_URL || 'http://localhost:5000/api').replace(/\/$/, '');
     const backendUploadsUrl = (process.env.BACKEND_UPLOADS_URL || 'http://localhost:5000/uploads').replace(/\/$/, '');
