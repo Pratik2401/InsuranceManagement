@@ -1,0 +1,82 @@
+name: Deploy Snap2Eat to Lightsail
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-snap2eat-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      DEPLOY_PATH: /var/www/snap2eat
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Load SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Trust Lightsail host
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Create deploy directory
+        run: |
+          ssh "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" "mkdir -p /var/www/snap2eat"
+
+      - name: Sync project files
+        run: |
+          rsync -az --delete \
+            --exclude '.git/' \
+            --exclude '.github/' \
+            --exclude 'backend/node_modules/' \
+            --exclude 'backend/.env' \
+            --exclude 'backend/uploads/' \
+            --exclude 'frontend/node_modules/' \
+            --exclude 'frontend/.next/' \
+            --exclude 'frontend/.env.local' \
+            ./ "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${DEPLOY_PATH}/"
+
+      - name: Install dependencies, build, and restart services
+        run: |
+          ssh "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" <<'EOF'
+          set -e
+
+          cd /var/www/snap2eat
+
+          npm ci --prefix backend --omit=dev
+          npm ci --prefix frontend
+
+          npm run build --prefix frontend
+
+          if npx --yes pm2 describe snap2eat-backend >/dev/null 2>&1; then
+            npx --yes pm2 restart snap2eat-backend --update-env
+          else
+            npx --yes pm2 start src/server.js \
+              --name snap2eat-backend \
+              --cwd /var/www/snap2eat/backend \
+              --update-env
+          fi
+
+          if npx --yes pm2 describe snap2eat-frontend >/dev/null 2>&1; then
+            npx --yes pm2 restart snap2eat-frontend --update-env
+          else
+            npx --yes pm2 start npm \
+              --name snap2eat-frontend \
+              --cwd /var/www/snap2eat/frontend \
+              -- start
+          fi
+
+          npx --yes pm2 save
+          EOF
