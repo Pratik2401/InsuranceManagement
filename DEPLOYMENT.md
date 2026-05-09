@@ -52,8 +52,8 @@ Add these secrets in the repository settings:
 Every push to `main` will:
 
 1. Sync the repository to `/var/www/snap2eat`
-2. Install backend and frontend dependencies
-3. Build the Next.js app
+2. Install backend dependencies on the server
+3. Expect a prebuilt frontend to be uploaded (or provided as a tarball)
 4. Restart the backend and frontend processes with PM2
 
 ## Notes
@@ -74,7 +74,7 @@ sudo chmod +x /var/www/snap2eat/deploy/scripts/*.sh
 
 - `deploy/scripts/first-deploy.sh` — run this on a fresh server to clone the repo (if needed), run the system bootstrap (`setup-server.sh`), install the Nginx site, create a sample `backend/.env` (doesn't overwrite existing), configure PM2 startup, and perform an initial update.
 
-- `deploy/scripts/update-site.sh` — run this to pull the latest `main` branch, install deps, build the frontend, and restart the backend/frontend processes under PM2.
+- `deploy/scripts/update-site.sh` — run this to pull the latest `main` branch, install backend dependencies, and restart the backend. The script expects a prebuilt frontend to be uploaded to the server (it will not run `npm run build` on the server by default). See the "Uploading a prebuilt frontend" section below for `rsync` and tarball examples.
 
 Examples (run on the server):
 
@@ -84,4 +84,40 @@ sudo REPO_URL='git@github.com:your/repo.git' bash /var/www/snap2eat/deploy/scrip
 
 # Subsequent updates
 sudo bash /var/www/snap2eat/deploy/scripts/update-site.sh
+```
+
+Uploading a prebuilt frontend from your development machine
+
+On your workstation, build the frontend normally:
+
+```bash
+cd frontend
+npm ci
+npm run build
+```
+
+Then upload the built artifacts to the server. The server expects `frontend/.next/` and `frontend/public/` to be present. Example using `rsync`:
+
+```bash
+# From your local repo root
+rsync -avz --delete frontend/.next/ ubuntu@13.233.204.92:/var/www/snap2eat/frontend/.next/
+rsync -avz --delete frontend/public/ ubuntu@13.233.204.92:/var/www/snap2eat/frontend/public/
+rsync -avz frontend/package.json ubuntu@13.233.204.92:/var/www/snap2eat/frontend/package.json
+```
+
+After uploading, on the server run:
+
+```bash
+sudo bash /var/www/snap2eat/deploy/scripts/update-site.sh
+```
+
+Alternative: create a tarball locally and upload it, then instruct the update script to extract it using the `FRONTEND_TARBALL` env var:
+
+```bash
+# create tarball of built frontend
+tar -czf frontend-build.tgz -C frontend .next public
+scp frontend-build.tgz ubuntu@13.233.204.92:/tmp/
+
+# on the server, extract and run update
+sudo FRONTEND_TARBALL=/tmp/frontend-build.tgz bash /var/www/snap2eat/deploy/scripts/update-site.sh
 ```
