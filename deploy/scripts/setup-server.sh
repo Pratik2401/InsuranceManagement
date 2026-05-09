@@ -30,8 +30,28 @@ fi
 
 export DEBIAN_FRONTEND=noninteractive
 
+ensure_swap() {
+  if swapon --show=NAME --noheadings | grep -q .; then
+    return 0
+  fi
+
+  local swapfile="/swapfile"
+  if [[ ! -f "$swapfile" ]]; then
+    fallocate -l 2G "$swapfile"
+    chmod 600 "$swapfile"
+    mkswap "$swapfile"
+  fi
+
+  swapon "$swapfile"
+  if ! grep -q '^/swapfile ' /etc/fstab; then
+    echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  fi
+}
+
 apt-get update
 apt-get install -y curl gnupg ca-certificates lsb-release software-properties-common git nginx rsync build-essential
+
+ensure_swap
 
 apt-get install -y mysql-server || {
   dpkg --configure -a
