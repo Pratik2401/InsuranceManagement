@@ -9,22 +9,35 @@ import api from '@/lib/axios';
 
 const API_ORIGIN = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').replace(/\/api$/, '');
 
-const createEmptyPolicy = () => ({
-  type: 'General',
-  gwp: '',
-  renewalPeriod: 'Yearly',
-  number: '',
-  holder: '',
-  company: '',
-  policyType: '',
-  date: new Date().toISOString().split('T')[0],
-  status: 'active',
-  startDate: new Date().toISOString().split('T')[0],
-  endDate: '',
-  isRenewal: false,
-  pdfUrl: null,
-  policyPdf: null,
-});
+const calculateEndDate = (startDate: string, renewalPeriod: string): string => {
+  const date = new Date(startDate);
+  if (renewalPeriod === 'Monthly') {
+    date.setMonth(date.getMonth() + 1);
+  } else {
+    date.setFullYear(date.getFullYear() + 1);
+  }
+  return date.toISOString().split('T')[0];
+};
+
+const createEmptyPolicy = () => {
+  const today = new Date().toISOString().split('T')[0];
+  return {
+    type: 'General',
+    gwp: '',
+    renewalPeriod: 'Yearly',
+    number: '',
+    holder: '',
+    company: '',
+    policyType: '',
+    date: today,
+    status: 'active',
+    startDate: today,
+    endDate: calculateEndDate(today, 'Yearly'),
+    isRenewal: false,
+    pdfUrl: null,
+    policyPdf: null,
+  };
+};
 
 
 
@@ -75,18 +88,33 @@ export default function NewBusinessPage() {
   };
 
   const openModal = (policy: any = createEmptyPolicy()) => {
+    const startDate = policy?.startDate || policy?.date || createEmptyPolicy().date;
+    const renewalPeriod = policy?.renewalPeriod || 'Yearly';
+    const isLeadConvertedPolicy = String(policy?.number || '').startsWith('LEAD-');
     setModalPolicy({
       ...createEmptyPolicy(),
       ...policy,
       gwp: policy?.gwp ?? '',
-      date: policy?.startDate || policy?.date || createEmptyPolicy().date,
-      startDate: policy?.startDate || policy?.date || createEmptyPolicy().startDate,
-      renewalPeriod: policy?.renewalPeriod || 'Yearly',
+      date: startDate,
+      startDate: startDate,
+      renewalPeriod: renewalPeriod,
+      endDate: policy?.endDate || calculateEndDate(startDate, renewalPeriod),
       isRenewal: !!policy?.isRenewal,
+      pdfUrl: isLeadConvertedPolicy ? null : (policy?.pdfUrl || null),
       policyPdf: null,
     });
     setIsModalOpen(true);
   };
+
+  // Auto-calculate end date when start date or renewal period changes
+  React.useEffect(() => {
+    if (modalPolicy && isModalOpen) {
+      const calculatedEndDate = calculateEndDate(modalPolicy.date, modalPolicy.renewalPeriod);
+      if (calculatedEndDate !== modalPolicy.endDate) {
+          setModalPolicy((prev: any) => ({ ...prev, endDate: calculatedEndDate }));
+      }
+    }
+  }, [modalPolicy?.date, modalPolicy?.renewalPeriod, isModalOpen]);
 
   React.useEffect(() => {
     loadPolicies();
@@ -176,7 +204,10 @@ export default function NewBusinessPage() {
       formData.append('policyType', modalPolicy.policyType || '');
       formData.append('gwp', String(modalPolicy.gwp || 0));
       formData.append('date', modalPolicy.date || new Date().toISOString().split('T')[0]);
+      formData.append('start_date', modalPolicy.date || new Date().toISOString().split('T')[0]);
+      formData.append('end_date', modalPolicy.endDate || '');
       formData.append('renewalPeriod', modalPolicy.renewalPeriod || 'Yearly');
+      formData.append('renewal_period', modalPolicy.renewalPeriod || 'Yearly');
       formData.append('status', modalPolicy.status || 'active');
       formData.append('isRenewal', String(modalPolicy.isRenewal || false));
       if (modalPolicy.policyPdf instanceof File) {
@@ -401,7 +432,7 @@ export default function NewBusinessPage() {
       {/* Add/Edit Modal */}
       {isModalOpen && (
         <div className="modal-backdrop bg-black bg-opacity-50 d-flex align-items-center justify-content-center" style={{ position: 'fixed', top: 0, left: 0, zIndex: 1050, width: '100vw', height: '100vh' }}>
-          <div className="dash-card w-100" style={{ maxWidth: '500px', border: '1px solid rgba(70, 69, 85, 0.4)' }}>
+          <div className="dash-card w-100" style={{ maxWidth: '560px', maxHeight: '90vh', overflowY: 'auto', border: '1px solid rgba(70, 69, 85, 0.4)' }}>
             <div className="d-flex justify-content-between align-items-center mb-4">
               <h5 className="text-white mb-0 fw-bold">{modalPolicy?.id ? 'Edit Policy' : 'Add New Policy'}</h5>
               <button className="btn text-muted-custom p-0" onClick={() => setIsModalOpen(false)}>
@@ -455,7 +486,14 @@ export default function NewBusinessPage() {
                   </select>
                 </div>
               </div>
-              <div className="mb-3 form-check px-0 d-flex align-items-center gap-2">
+              <div className="mb-3">
+                <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>End Date (Auto-calculated)</label>
+                <input type="date" className="form-control custom-select" value={modalPolicy?.endDate || ''} readOnly style={{ backgroundColor: 'rgba(226, 226, 235, 0.08)', color: '#e2e2eb' }} />
+                <small className="text-muted-custom d-block mt-1" style={{ fontSize: '0.7rem' }}>
+                  {modalPolicy?.renewalPeriod === 'Monthly' ? 'Auto-calculated: +1 month from start date' : 'Auto-calculated: +1 year from start date'}
+                </small>
+              </div>
+              <div className="mb-3 form-check px-0 d-flex align-items-start gap-2 flex-wrap w-100">
                 <input 
                   type="checkbox" 
                   className="form-check-input mt-0" 
@@ -475,7 +513,7 @@ export default function NewBusinessPage() {
                   className="form-control custom-select"
                   onChange={(e) => setModalPolicy({...modalPolicy, policyPdf: e.target.files?.[0] || null})}
                 />
-                {modalPolicy?.pdfUrl && !modalPolicy?.policyPdf && (
+                {modalPolicy?.pdfUrl && !modalPolicy?.policyPdf && !String(modalPolicy?.number || '').startsWith('LEAD-') && (
                   <div className="mt-2">
                     <a href={modalPolicy.pdfUrl} target="_blank" rel="noreferrer" className="text-brand" style={{ fontSize: '0.8rem' }}>
                       Open existing PDF

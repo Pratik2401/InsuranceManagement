@@ -6,6 +6,60 @@ const { logAudit } = require('../middleware/audit');
 
 router.use(verifyToken, requireAgent);
 
+function normalizeDate(value) {
+  if (!value) return new Date().toISOString().split('T')[0];
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return new Date().toISOString().split('T')[0];
+  return parsed.toISOString().split('T')[0];
+}
+
+function inferRenewalPeriod(startDate, endDate) {
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 'Yearly';
+  const diffDays = Math.round((end.getTime() - start.getTime()) / 86400000);
+  return diffDays <= 35 ? 'Monthly' : 'Yearly';
+}
+
+function addRenewalPeriod(startDate, renewalPeriod) {
+  const date = new Date(startDate);
+  if (renewalPeriod === 'Monthly') {
+    date.setMonth(date.getMonth() + 1);
+  } else {
+    date.setFullYear(date.getFullYear() + 1);
+  }
+  return date.toISOString().split('T')[0];
+}
+
+async function renewPolicySameRecord(connection, policyId, paymentDateInput) {
+  const [rows] = await connection.query('SELECT * FROM policies WHERE id = ? FOR UPDATE', [policyId]);
+  if (rows.length === 0) {
+    const error = new Error('Policy not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const policy = rows[0];
+  const currentEndDate = policy.end_date;
+  const currentStartDate = policy.start_date || currentEndDate;
+  const renewalPeriod = inferRenewalPeriod(currentStartDate, currentEndDate);
+  const paymentDate = normalizeDate(paymentDateInput || new Date().toISOString().split('T')[0]);
+  const renewalStartDate = paymentDate > currentEndDate ? paymentDate : currentEndDate;
+  const renewedEndDate = addRenewalPeriod(renewalStartDate, renewalPeriod);
+
+  await connection.query(
+    'UPDATE policies SET start_date = ?, end_date = ?, status = ? WHERE id = ?',
+    [renewalStartDate, renewedEndDate, 'active', policyId]
+  );
+
+  return {
+    policy,
+    renewalStartDate,
+    renewedEndDate,
+    renewalPeriod,
+  };
+}
+
 // GET payments
 router.get('/', async (req, res) => {
   try {
@@ -30,6 +84,56 @@ router.post('/', async (req, res) => {
   } catch (err) {
     console.error('Error creating payment:', err);
     res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// POST create payment and renew the same policy in place
+router.post('/renewal', async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    const { policy_id, amount, payment_date, payment_method, transaction_id } = req.body;
+    if (!policy_id) {
+      return res.status(400).json({ message: 'policy_id is required' });
+    }
+
+    await connection.beginTransaction();
+
+    const renewal = await renewPolicySameRecord(connection, policy_id, payment_date);
+    const resolvedAmount = Number(amount ?? renewal.policy.premium_amount ?? 0);
+    const resolvedPaymentDate = normalizeDate(payment_date || new Date().toISOString().split('T')[0]);
+    const resolvedMethod = payment_method || 'other';
+
+    const [paymentResult] = await connection.query(
+      'INSERT INTO payments (policy_id, amount, payment_date, payment_method, status, transaction_id) VALUES (?, ?, ?, ?, ?, ?)',
+      [policy_id, resolvedAmount, resolvedPaymentDate, resolvedMethod, 'success', transaction_id || null]
+    );
+
+    await connection.commit();
+
+    try {
+      await logAudit(req.user?.id, 'payment.renewal', 'payment', paymentResult.insertId, {
+        policy_id,
+        amount: resolvedAmount,
+        renewalStartDate: renewal.renewalStartDate,
+        renewedEndDate: renewal.renewedEndDate,
+      });
+    } catch (e) {}
+
+    res.status(201).json({
+      id: paymentResult.insertId,
+      policy_id: Number(policy_id),
+      amount: resolvedAmount,
+      payment_date: resolvedPaymentDate,
+      status: 'success',
+      renewalStartDate: renewal.renewalStartDate,
+      renewedEndDate: renewal.renewedEndDate,
+    });
+  } catch (err) {
+    await connection.rollback();
+    console.error('Error creating renewal payment:', err);
+    res.status(err.statusCode || 500).json({ message: err.message || 'Internal server error' });
+  } finally {
+    connection.release();
   }
 });
 

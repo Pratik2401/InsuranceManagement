@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Search, Clock, AlertTriangle, CheckCircle2, ChevronUp, ChevronDown, ChevronsUpDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Clock, AlertTriangle, CheckCircle2, ChevronUp, ChevronDown, ChevronsUpDown, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { ExportDropdown } from '@/components/DataMobility';
+import toast from 'react-hot-toast';
 
 import api from '@/lib/axios';
 
@@ -23,23 +24,127 @@ function getStatus(days: number) {
 const filterOptions = ['All', 'Overdue', 'Due This Week', 'Future'];
 type SortKey = 'policyName' | 'holder' | 'company' | 'policyNo' | 'dueDate' | 'premium';
 
+const getPolicyStatus = (row: any) => {
+  const normalizedStatus = String(row.status || '').toLowerCase();
+  if (normalizedStatus === 'pending' || normalizedStatus === 'pending_renewal') {
+    return { label: 'Pending Renewal', badgeClass: 'bg-warning bg-opacity-10 text-warning', icon: Clock };
+  }
+
+  const days = daysUntil(row.dueDate);
+  return getStatus(days);
+};
+
+const calculateRenewalEndDate = (startDate: string, renewalPeriod: string) => {
+  const date = new Date(startDate);
+  if (renewalPeriod === 'Monthly') {
+    date.setMonth(date.getMonth() + 1);
+  } else {
+    date.setFullYear(date.getFullYear() + 1);
+  }
+  return date.toISOString().split('T')[0];
+};
+
 export default function UpcomingRenewalsPage() {
   const [upcomingData, setUpcomingData] = useState<any[]>([]);
+  const [selectedPolicy, setSelectedPolicy] = useState<any>(null);
+  const [showRenewModal, setShowRenewModal] = useState(false);
+  const [renewForm, setRenewForm] = useState({
+    amount: '',
+    payment_date: new Date().toISOString().split('T')[0],
+    payment_method: 'bank_transfer',
+    transaction_id: '',
+  });
 
   React.useEffect(() => {
     async function load() {
       try {
         const res = await api.get('/policies');
-        const formatted = res.data.map((p: any) => ({
-          id: p.id, policyName: p.policyType || p.type, holder: p.holder, company: p.company, policyNo: p.number, startDate: p.date, dueDate: p.endDate, premium: Number(p.gwp)
-        }));
+        console.log('Raw API response:', res.data);
+        
+        const formatted = res.data.map((p: any) => {
+          const dueDate = p.endDate || p.end_date || p.date;
+          const item = {
+            id: p.id, 
+            policyName: p.policyType || p.type, 
+            holder: p.holder, 
+            company: p.company, 
+            policyNo: p.number, 
+            startDate: p.date || p.startDate, 
+            dueDate: dueDate, 
+            premium: Number(p.gwp),
+            status: p.status || 'Active',
+            renewalPeriod: p.renewalPeriod || 'Yearly',
+          };
+          console.log(`Policy ${p.number}: dueDate=${dueDate}, startDate=${p.date}, endDate=${p.endDate}`);
+          return item;
+        });
+        
+        console.log('Formatted upcoming data:', formatted);
         setUpcomingData(formatted);
       } catch (e) {
-        console.error(e);
+        console.error('Error loading policies:', e);
       }
     }
     load();
   }, []);
+
+  const openRenewModal = async (row: any) => {
+    try {
+      await api.post(`/policies/${row.id}/mark-pending-renewal`);
+      setSelectedPolicy(row);
+      setRenewForm({
+        amount: String(row.premium || 0),
+        payment_date: new Date().toISOString().split('T')[0],
+        payment_method: 'bank_transfer',
+        transaction_id: '',
+      });
+      setShowRenewModal(true);
+      await api.get('/policies');
+      setUpcomingData((prev) => prev.map((item) => item.id === row.id ? { ...item, status: 'pending' } : item));
+      toast.success('Policy marked pending renewal.');
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error?.response?.data?.message || 'Unable to mark policy pending renewal.');
+    }
+  };
+
+  const closeRenewModal = () => {
+    setShowRenewModal(false);
+    setSelectedPolicy(null);
+  };
+
+  const confirmRenewalPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedPolicy) return;
+
+    try {
+      await api.post('/payments/renewal', {
+        policy_id: selectedPolicy.id,
+        amount: renewForm.amount,
+        payment_date: renewForm.payment_date,
+        payment_method: renewForm.payment_method,
+        transaction_id: renewForm.transaction_id,
+      });
+      toast.success('Renewal payment confirmed and policy renewed.');
+      closeRenewModal();
+      const res = await api.get('/policies');
+      setUpcomingData(res.data.map((p: any) => ({
+        id: p.id,
+        policyName: p.policyType || p.type,
+        holder: p.holder,
+        company: p.company,
+        policyNo: p.number,
+        startDate: p.date || p.startDate,
+        dueDate: p.endDate || p.end_date || p.date,
+        premium: Number(p.gwp),
+        status: p.status || 'Active',
+        renewalPeriod: p.renewalPeriod || 'Yearly',
+      })));
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error?.response?.data?.message || 'Unable to confirm renewal payment.');
+    }
+  };
 
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('All');
@@ -53,8 +158,12 @@ export default function UpcomingRenewalsPage() {
   const [itemsPerPage, setItemsPerPage] = useState(5);
 
   const filteredAndSorted = useMemo(() => {
-    let result = upcomingData.filter((p) => {
+    console.log('Filtering data:', { totalItems: upcomingData.length, search, filter });
+    
+        let result = upcomingData.filter((p) => {
       const days = daysUntil(p.dueDate);
+      console.log(`Filter check - Policy ${p.policyNo}: dueDate=${p.dueDate}, days=${days}`);
+      
       const matchSearch =
         p.holder.toLowerCase().includes(search.toLowerCase()) ||
         p.policyNo.toLowerCase().includes(search.toLowerCase()) ||
@@ -64,8 +173,12 @@ export default function UpcomingRenewalsPage() {
         (filter === 'Overdue' && days < 0) ||
         (filter === 'Due This Week' && days >= 0 && days <= 7) ||
         (filter === 'Future' && days > 7);
+      
+      console.log(`  → matchSearch=${matchSearch}, matchFilter=${matchFilter}, included=${matchSearch && matchFilter}`);
       return matchSearch && matchFilter;
     });
+
+    console.log(`After filtering: ${result.length} items`);
 
     result.sort((a, b) => {
       let aVal = a[sortKey];
@@ -82,7 +195,7 @@ export default function UpcomingRenewalsPage() {
     });
 
     return result;
-  }, [search, filter, sortKey, sortOrder]);
+  }, [search, filter, sortKey, sortOrder, upcomingData]);
 
   const totalPages = Math.ceil(filteredAndSorted.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -188,14 +301,15 @@ export default function UpcomingRenewalsPage() {
                 <th className="sortable-th" onClick={() => handleSort('dueDate')}>Due Date <SortIcon columnKey="dueDate" /></th>
                 <th className="sortable-th text-end" onClick={() => handleSort('premium')}>Premium <SortIcon columnKey="premium" /></th>
                 <th>Status</th>
+                <th className="text-end">Action</th>
               </tr>
             </thead>
             <tbody>
               {paginatedData.length === 0
-                ? <tr><td colSpan={7} className="text-center py-5 text-muted-custom">No matching renewals found.</td></tr>
+                ? <tr><td colSpan={8} className="text-center py-5 text-muted-custom">No matching renewals found.</td></tr>
                 : paginatedData.map((row) => {
                   const days = daysUntil(row.dueDate);
-                  const status = getStatus(days);
+                  const status = getPolicyStatus(row);
                   const StatusIcon = status.icon;
                   const isOverdue = days < 0;
 
@@ -214,6 +328,11 @@ export default function UpcomingRenewalsPage() {
                           <StatusIcon size={12} className="me-1" />
                           {status.label}
                         </span>
+                      </td>
+                      <td className="text-end">
+                        <button className="btn btn-sm btn-outline-warning" onClick={() => openRenewModal(row)}>
+                          Renew Now
+                        </button>
                       </td>
                     </tr>
                   );
@@ -259,6 +378,51 @@ export default function UpcomingRenewalsPage() {
         )}
 
       </div>
+
+      {showRenewModal && selectedPolicy && (
+        <div className="modal-backdrop bg-black bg-opacity-50 d-flex align-items-center justify-content-center" style={{ position: 'fixed', top: 0, left: 0, zIndex: 1050, width: '100vw', height: '100vh' }}>
+          <div className="dash-card w-100" style={{ maxWidth: '520px', maxHeight: '90vh', overflowY: 'auto', border: '1px solid rgba(70, 69, 85, 0.4)' }}>
+            <div className="d-flex justify-content-between align-items-center mb-4">
+              <h5 className="text-white mb-0 fw-bold">Confirm Renewal Payment</h5>
+              <button className="btn text-muted-custom p-0" onClick={closeRenewModal}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={confirmRenewalPayment}>
+              <div className="mb-3">
+                <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Policy</label>
+                <input className="form-control custom-select" value={`${selectedPolicy.policyNo} - ${selectedPolicy.holder}`} readOnly />
+              </div>
+              <div className="mb-3">
+                <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Amount</label>
+                <input type="number" className="form-control custom-select" value={renewForm.amount} onChange={(e) => setRenewForm({ ...renewForm, amount: e.target.value })} required />
+              </div>
+              <div className="mb-3">
+                <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Payment Date</label>
+                <input type="date" className="form-control custom-select" value={renewForm.payment_date} onChange={(e) => setRenewForm({ ...renewForm, payment_date: e.target.value })} required />
+              </div>
+              <div className="mb-3">
+                <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Payment Method</label>
+                <select className="form-select custom-select" value={renewForm.payment_method} onChange={(e) => setRenewForm({ ...renewForm, payment_method: e.target.value })}>
+                  <option value="bank_transfer">Bank Transfer</option>
+                  <option value="credit_card">Credit Card</option>
+                  <option value="cash">Cash</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div className="mb-4">
+                <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Transaction ID</label>
+                <input className="form-control custom-select" value={renewForm.transaction_id} onChange={(e) => setRenewForm({ ...renewForm, transaction_id: e.target.value })} placeholder="Optional" />
+              </div>
+              <div className="d-flex justify-content-end gap-2">
+                <button type="button" className="btn btn-sm" style={{ background: 'transparent', color: '#e2e2eb', border: '1px solid rgba(226,226,235,0.2)' }} onClick={closeRenewModal}>Cancel</button>
+                <button type="submit" className="btn btn-sm" style={{ background: '#f59e0b', color: '#111827', border: 'none' }}>Confirm Payment</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

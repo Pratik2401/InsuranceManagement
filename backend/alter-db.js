@@ -10,6 +10,24 @@ async function run() {
   });
 
   try {
+    await connection.query("ALTER TABLE policies MODIFY status ENUM('active', 'expired', 'cancelled', 'pending', 'pending_renewal') DEFAULT 'pending'");
+    console.log('Updated policies.status enum');
+  } catch (err) {
+    console.error(err);
+  }
+
+  try {
+    await connection.query('ALTER TABLE leads ADD COLUMN converted_policy_number VARCHAR(50) DEFAULT NULL');
+    console.log('Added converted_policy_number column');
+  } catch (err) {
+    if (err.code === 'ER_DUP_FIELDNAME') {
+      console.log('leads.converted_policy_number already exists');
+    } else {
+      console.error(err);
+    }
+  }
+
+  try {
     await connection.query('ALTER TABLE policies ADD COLUMN is_renewal BOOLEAN DEFAULT FALSE');
     console.log('Added is_renewal column');
   } catch (err) {

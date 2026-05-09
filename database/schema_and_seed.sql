@@ -13,6 +13,7 @@
     DROP TABLE IF EXISTS app_settings;
     DROP TABLE IF EXISTS users;
     DROP TABLE IF EXISTS leads;
+    DROP TABLE IF EXISTS products;
 
     -- 1. Users Table (Agents, Admins)
     CREATE TABLE users (
@@ -70,8 +71,17 @@
         product VARCHAR(100),
         status ENUM('Open', 'Converted', 'Lost') DEFAULT 'Open',
         date DATE NOT NULL,
+        converted_policy_number VARCHAR(50) DEFAULT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    );
+
+    -- 1.7 Products Table
+    CREATE TABLE IF NOT EXISTS products (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL UNIQUE,
+        description TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
     -- 2. Customers Table
@@ -99,7 +109,7 @@
         coverage_amount DECIMAL(15, 2) NOT NULL,
         start_date DATE NOT NULL,
         end_date DATE NOT NULL,
-        status ENUM('active', 'expired', 'cancelled', 'pending') DEFAULT 'pending',
+        status ENUM('active', 'expired', 'cancelled', 'pending', 'pending_renewal') DEFAULT 'pending',
         is_renewal BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -136,6 +146,13 @@
     );
 
     -- Seed
+
+    -- Seed Products
+    INSERT IGNORE INTO products (name, description) VALUES
+    ('Motor', 'Motor vehicle insurance'),
+    ('Health', 'Health and medical insurance'),
+    ('Life', 'Life and term life insurance'),
+    ('General', 'Various general coverages');
 
     -- Seed Users (Passwords are hashed)
     INSERT INTO users (name, email, password, role) VALUES 

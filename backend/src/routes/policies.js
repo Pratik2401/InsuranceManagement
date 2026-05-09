@@ -27,7 +27,7 @@ const upload = multer({
 function normalizePolicyStatus(status) {
   const value = String(status || 'active').trim().toLowerCase();
   if (value === 'open') return 'active';
-  if (value === 'active' || value === 'expired' || value === 'cancelled' || value === 'pending') {
+  if (value === 'active' || value === 'expired' || value === 'cancelled' || value === 'pending' || value === 'pending_renewal') {
     return value;
   }
   return 'active';
@@ -38,11 +38,18 @@ function displayPolicyStatus(status) {
   if (value === 'active') return 'Active';
   if (value === 'expired') return 'Expired';
   if (value === 'cancelled') return 'Cancelled';
+  if (value === 'pending_renewal') return 'Pending Renewal';
   return 'Pending';
 }
 
 function normalizeRenewalPeriod(period) {
   return String(period || 'Yearly').trim().toLowerCase() === 'monthly' ? 'Monthly' : 'Yearly';
+}
+
+function parseBoolean(value) {
+  if (value === true || value === 1) return true;
+  if (value === false || value === 0) return false;
+  return String(value || '').toLowerCase() === 'true' || value === '1';
 }
 
 function normalizeDate(value) {
@@ -60,6 +67,14 @@ function addRenewalPeriod(startDate, renewalPeriod) {
     date.setFullYear(date.getFullYear() + 1);
   }
   return date.toISOString().split('T')[0];
+}
+
+function inferRenewalPeriod(startDate, endDate) {
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 'Yearly';
+  const diffDays = Math.round((end.getTime() - start.getTime()) / 86400000);
+  return diffDays <= 35 ? 'Monthly' : 'Yearly';
 }
 
 function splitHolderName(holder) {
@@ -147,6 +162,22 @@ function mapPolicyRow(row) {
   };
 }
 
+async function renewPolicyInPlace(connection, policyRow, paymentDateInput) {
+  const currentEndDate = policyRow.end_date || policyRow.endDate;
+  const currentStartDate = policyRow.start_date || policyRow.startDate || currentEndDate;
+  const renewalPeriod = inferRenewalPeriod(currentStartDate, currentEndDate);
+  const paymentDate = normalizeDate(paymentDateInput || new Date().toISOString().split('T')[0]);
+  const renewalStartDate = paymentDate > currentEndDate ? paymentDate : currentEndDate;
+  const renewedEndDate = addRenewalPeriod(renewalStartDate, renewalPeriod);
+
+  await connection.query(
+    'UPDATE policies SET start_date = ?, end_date = ?, status = ? WHERE id = ?',
+    [renewalStartDate, renewedEndDate, 'active', policyRow.id]
+  );
+
+  return { renewalStartDate, renewedEndDate, renewalPeriod };
+}
+
 // GET all policies (formatted for "New Business" UI)
 router.get('/', async (req, res) => {
   try {
@@ -212,7 +243,7 @@ router.post('/', upload.single('policyPdf'), async (req, res) => {
     const resolvedCustomerId = await getOrCreateCustomer(resolvedHolder, customer_id);
     const resolvedPremium = Number(gwp ?? premium_amount ?? 0);
     const resolvedPolicyType = policyType || policy_type || 'Other';
-    const resolvedIsRenewal = isRenewal === 'true' || isRenewal === true || is_renewal === 'true' || is_renewal === true;
+    const resolvedIsRenewal = parseBoolean(isRenewal ?? is_renewal);
     const insertQuery = `
       INSERT INTO policies (policy_number, customer_id, type, company, policy_type, premium_amount, coverage_amount, start_date, end_date, status, is_renewal)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -266,7 +297,7 @@ router.post('/bulk', async (req, res) => {
       const resolvedStartDate = normalizeDate(policy.date || policy.startDate || policy.start_date);
       const resolvedRenewalPeriod = normalizeRenewalPeriod(policy.renewalPeriod || policy.renewal_period);
       const resolvedEndDate = normalizeDate(policy.endDate || policy.end_date || addRenewalPeriod(resolvedStartDate, resolvedRenewalPeriod));
-      const resolvedIsRenewal = policy.isRenewal === 'true' || policy.isRenewal === true || policy.is_renewal === 'true' || policy.is_renewal === true;
+      const resolvedIsRenewal = parseBoolean(policy.isRenewal ?? policy.is_renewal);
 
       const [result] = await pool.query(
         `
@@ -334,7 +365,7 @@ router.put('/:id', upload.single('policyPdf'), async (req, res) => {
     const resolvedRenewalPeriod = normalizeRenewalPeriod(renewalPeriod || renewal_period || 'Yearly');
     const resolvedEndDate = normalizeDate(endDate || end_date || addRenewalPeriod(resolvedStartDate, resolvedRenewalPeriod));
     const resolvedCustomerId = await getOrCreateCustomer(resolvedHolder || `${existingRows[0].policy_number} Holder`, existingRows[0].customer_id);
-    const resolvedIsRenewal = isRenewal !== undefined ? (isRenewal === 'true' || isRenewal === true) : !!existingRows[0].is_renewal;
+    const resolvedIsRenewal = isRenewal !== undefined ? parseBoolean(isRenewal) : !!existingRows[0].is_renewal;
 
     const updateQuery = `
       UPDATE policies 
@@ -377,6 +408,30 @@ router.put('/:id', upload.single('policyPdf'), async (req, res) => {
     });
   } catch (error) {
     console.error('Error updating policy:', error);
+    res.status(500).json({ message: error.message || 'Internal server error' });
+  }
+});
+
+// Mark a policy as pending renewal
+router.post('/:id/mark-pending-renewal', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [result] = await pool.query(
+      "UPDATE policies SET status = 'pending' WHERE id = ? AND status <> 'pending'",
+      [id]
+    );
+
+    if (result.affectedRows === 0) {
+      const [existingRows] = await pool.query('SELECT id FROM policies WHERE id = ?', [id]);
+      if (existingRows.length === 0) {
+        return res.status(404).json({ message: 'Policy not found' });
+      }
+    }
+
+    try { await logAudit(req.user?.id, 'policy.mark_pending_renewal', 'policy', id); } catch (e) {}
+    res.json({ message: 'Policy marked pending renewal', id: Number(id), status: 'pending' });
+  } catch (error) {
+    console.error('Error marking policy pending renewal:', error);
     res.status(500).json({ message: error.message || 'Internal server error' });
   }
 });

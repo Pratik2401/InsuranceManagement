@@ -22,6 +22,50 @@ const normalizeLeadStatus = (status: string) => {
   return 'Open';
 };
 
+const formatIsoDate = (value: string) => {
+  if (!value) return '';
+  return new Date(value).toISOString().split('T')[0];
+};
+
+const formatDisplayDate = (value: string) => {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return parsed.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+};
+
+const calculateEndDate = (startDate: string, renewalPeriod: string): string => {
+  const date = new Date(startDate);
+  if (renewalPeriod === 'Monthly') {
+    date.setMonth(date.getMonth() + 1);
+  } else {
+    date.setFullYear(date.getFullYear() + 1);
+  }
+  return date.toISOString().split('T')[0];
+};
+
+const createEmptyLead = () => {
+  const today = new Date().toISOString().split('T')[0];
+  return {
+    name: '',
+    phone: '',
+    product: 'General',
+    status: 'Open',
+    date: today,
+    dateRaw: today,
+    convertedPolicyNumber: '',
+    businessType: 'General',
+    businessCompany: '',
+    businessPolicyType: '',
+    businessGwp: '',
+    businessCoverageAmount: '',
+    businessDate: today,
+    businessRenewalPeriod: 'Yearly',
+    businessEndDate: calculateEndDate(today, 'Yearly'),
+    businessIsRenewal: false,
+  };
+};
+
 type SortKey = 'name' | 'phone' | 'product' | 'date' | 'status';
 
 export default function LeadsPage() {
@@ -35,8 +79,20 @@ export default function LeadsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalLead, setModalLead] = useState<any>(null);
 
-  const openModal = (lead: any = { status: 'Open' }) => {
-    setModalLead({ ...lead, status: normalizeLeadStatus(lead.status) });
+  const openModal = (lead: any = createEmptyLead()) => {
+    const businessDate = lead.businessDate || lead.dateRaw || lead.date || new Date().toISOString().split('T')[0];
+    const businessRenewalPeriod = lead.businessRenewalPeriod || 'Yearly';
+    setModalLead({
+      ...createEmptyLead(),
+      ...lead,
+      status: normalizeLeadStatus(lead.status),
+      date: lead.date || formatDisplayDate(lead.dateRaw || lead.date),
+      dateRaw: lead.dateRaw || lead.date || new Date().toISOString().split('T')[0],
+      businessDate,
+      businessRenewalPeriod,
+      businessEndDate: lead.businessEndDate || calculateEndDate(businessDate, businessRenewalPeriod),
+      businessIsRenewal: !!lead.businessIsRenewal,
+    });
     setIsModalOpen(true);
   };
 
@@ -48,32 +104,44 @@ export default function LeadsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(5);
 
-  React.useEffect(() => {
-    async function load() {
-      try {
-        const [resLeads, resProducts] = await Promise.all([
-          api.get('/leads'),
-          api.get('/products')
-        ]);
-        const formatted = resLeads.data.map((r: any) => ({
-          ...r,
-          status: normalizeLeadStatus(r.status),
-          date: new Date(r.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-        }));
-        setDataList(formatted);
-        setProducts(resProducts.data);
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
-      }
+  const load = async () => {
+    try {
+      const [resLeads, resProducts] = await Promise.all([
+        api.get('/leads'),
+        api.get('/products')
+      ]);
+      const formatted = resLeads.data.map((r: any) => ({
+        ...r,
+        status: normalizeLeadStatus(r.status),
+        dateRaw: r.date,
+        date: formatDisplayDate(r.date),
+        convertedPolicyNumber: r.convertedPolicyNumber || '',
+        businessType: r.businessType || r.product || 'General',
+        businessCompany: r.businessCompany || '',
+        businessPolicyType: r.businessPolicyType || '',
+        businessGwp: r.businessGwp ?? '',
+        businessCoverageAmount: r.businessCoverageAmount ?? '',
+        businessDate: r.businessDate || r.date || '',
+        businessEndDate: r.businessEndDate || '',
+        businessRenewalPeriod: r.businessRenewalPeriod || 'Yearly',
+        businessIsRenewal: !!r.businessIsRenewal,
+      }));
+      setDataList(formatted);
+      setProducts(resProducts.data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  React.useEffect(() => {
     load();
   }, []);
 
   const monthLeads = useMemo(() => {
     const raw = [...dataList];
-    raw.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    raw.sort((a, b) => new Date(a.dateRaw || a.date).getTime() - new Date(b.dateRaw || b.date).getTime());
 
     const byMonth: Record<string, any> = {};
     raw.forEach(lead => {
@@ -145,13 +213,7 @@ export default function LeadsPage() {
   const handleImport = async (importedRows: any[]) => {
     try {
       await api.post('/leads/bulk', importedRows);
-      const res = await api.get('/leads');
-      const formatted = res.data.map((r: any) => ({
-        ...r,
-        status: normalizeLeadStatus(r.status),
-        date: new Date(r.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-      }));
-      setDataList(formatted);
+      await load();
       toast.success('Leads imported successfully!');
     } catch (e) {
       toast.error('Bulk import failed.');
@@ -162,15 +224,32 @@ export default function LeadsPage() {
   const handleSaveLead = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const leadDate = modalLead.dateRaw || formatIsoDate(modalLead.date || new Date().toISOString().split('T')[0]);
+      const businessDate = modalLead.businessDate || leadDate;
+      const businessRenewalPeriod = modalLead.businessRenewalPeriod || 'Yearly';
+      const payload = {
+        ...modalLead,
+        status: normalizeLeadStatus(modalLead.status),
+        date: leadDate,
+        converted_policy_number: modalLead.convertedPolicyNumber || '',
+        businessType: modalLead.businessType || modalLead.product || 'General',
+        businessCompany: modalLead.businessCompany || '',
+        businessPolicyType: modalLead.businessPolicyType || '',
+        businessGwp: modalLead.businessGwp || '',
+        businessCoverageAmount: modalLead.businessCoverageAmount || '',
+        businessDate,
+        businessRenewalPeriod,
+        businessEndDate: modalLead.businessEndDate || calculateEndDate(businessDate, businessRenewalPeriod),
+        businessIsRenewal: !!modalLead.businessIsRenewal,
+      };
+
       if (modalLead.id) {
-        await api.put(`/leads/${modalLead.id}`, { ...modalLead, status: normalizeLeadStatus(modalLead.status) });
-        setDataList(prev => prev.map(l => l.id === modalLead.id ? { ...modalLead, date: new Date(modalLead.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) } : l));
+        await api.put(`/leads/${modalLead.id}`, payload);
+        await load();
         toast.success('Lead updated successfully!');
       } else {
-        const payload = { ...modalLead, status: normalizeLeadStatus(modalLead.status), date: new Date().toISOString().split('T')[0] };
-        const res = await api.post('/leads', payload);
-        const newRecord = { ...payload, id: res.data.id, date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) };
-        setDataList(prev => [newRecord, ...prev]);
+        await api.post('/leads', payload);
+        await load();
         toast.success('Lead added successfully!');
       }
       setIsModalOpen(false);
@@ -379,7 +458,7 @@ export default function LeadsPage() {
       {/* Add/Edit Modal */}
       {isModalOpen && (
         <div className="modal-backdrop bg-black bg-opacity-50 d-flex align-items-center justify-content-center" style={{ position: 'fixed', top: 0, left: 0, zIndex: 1050, width: '100vw', height: '100vh' }}>
-          <div className="dash-card w-100" style={{ maxWidth: '500px', border: '1px solid rgba(70, 69, 85, 0.4)' }}>
+          <div className="dash-card w-100" style={{ maxWidth: '560px', maxHeight: '90vh', overflowY: 'auto', border: '1px solid rgba(70, 69, 85, 0.4)' }}>
             <div className="d-flex justify-content-between align-items-center mb-4">
               <h5 className="text-white mb-0 fw-bold">{modalLead?.id ? 'Edit Lead' : 'Add New Lead'}</h5>
               <button className="btn text-muted-custom p-0" onClick={() => setIsModalOpen(false)}>
@@ -410,6 +489,60 @@ export default function LeadsPage() {
                   <option value="Lost">Lost</option>
                 </select>
               </div>
+              {normalizeLeadStatus(modalLead?.status) === 'Converted' && (
+                <div className="mb-4 p-3 rounded" style={{ border: '1px solid rgba(79, 70, 229, 0.18)', background: 'rgba(79, 70, 229, 0.06)' }}>
+                  <div className="d-flex justify-content-between align-items-center mb-3">
+                    <div>
+                      <div className="text-white fw-semibold" style={{ fontSize: '0.9rem' }}>Business Details</div>
+                      <div className="text-muted-custom" style={{ fontSize: '0.75rem' }}>These fields create or update the linked business record.</div>
+                    </div>
+                    <span className="badge bg-success bg-opacity-10 text-success">Converted</span>
+                  </div>
+                  <div className="row g-2">
+                    <div className="col-12 col-sm-6">
+                      <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Policy No.</label>
+                      <input className="form-control custom-select" value={modalLead?.convertedPolicyNumber || ''} onChange={(e) => setModalLead({ ...modalLead, convertedPolicyNumber: e.target.value })} placeholder="POL-2026-0001" />
+                    </div>
+                    <div className="col-12 col-sm-6">
+                      <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Insurer</label>
+                      <input className="form-control custom-select" value={modalLead?.businessCompany || ''} onChange={(e) => setModalLead({ ...modalLead, businessCompany: e.target.value })} />
+                    </div>
+                    <div className="col-12 col-sm-6">
+                      <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Policy Type</label>
+                      <input className="form-control custom-select" value={modalLead?.businessPolicyType || ''} onChange={(e) => setModalLead({ ...modalLead, businessPolicyType: e.target.value })} />
+                    </div>
+                    <div className="col-12 col-sm-6">
+                      <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>GWP (Premium)</label>
+                      <input type="number" className="form-control custom-select" value={modalLead?.businessGwp || ''} onChange={(e) => setModalLead({ ...modalLead, businessGwp: e.target.value })} />
+                    </div>
+                    <div className="col-12 col-sm-6">
+                      <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Coverage Amount</label>
+                      <input type="number" className="form-control custom-select" value={modalLead?.businessCoverageAmount || ''} onChange={(e) => setModalLead({ ...modalLead, businessCoverageAmount: e.target.value })} />
+                    </div>
+                    <div className="col-12 col-sm-6">
+                      <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Start Date</label>
+                      <input type="date" className="form-control custom-select" value={modalLead?.businessDate || ''} onChange={(e) => setModalLead({ ...modalLead, businessDate: e.target.value, businessEndDate: calculateEndDate(e.target.value, modalLead?.businessRenewalPeriod || 'Yearly') })} />
+                    </div>
+                    <div className="col-12 col-sm-6">
+                      <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>Renewal Period</label>
+                      <select className="form-select custom-select" value={modalLead?.businessRenewalPeriod || 'Yearly'} onChange={(e) => setModalLead({ ...modalLead, businessRenewalPeriod: e.target.value, businessEndDate: calculateEndDate(modalLead?.businessDate || new Date().toISOString().split('T')[0], e.target.value) })}>
+                        <option value="Monthly">Monthly</option>
+                        <option value="Yearly">Yearly</option>
+                      </select>
+                    </div>
+                    <div className="col-12 col-sm-6">
+                      <label className="form-label text-muted-custom" style={{ fontSize: '0.8rem' }}>End Date</label>
+                      <input type="date" className="form-control custom-select" value={modalLead?.businessEndDate || ''} readOnly />
+                    </div>
+                    <div className="col-12">
+                      <div className="form-check px-0 d-flex align-items-start gap-2 mt-1 flex-wrap w-100">
+                        <input type="checkbox" className="form-check-input mt-0" id="leadBusinessRenewal" checked={!!modalLead?.businessIsRenewal} onChange={(e) => setModalLead({ ...modalLead, businessIsRenewal: e.target.checked })} />
+                        <label className="form-check-label text-muted-custom" htmlFor="leadBusinessRenewal" style={{ fontSize: '0.8rem' }}>Mark as Renewal Policy</label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="d-flex justify-content-end gap-2">
                 <button type="button" className="btn btn-sm" style={{ background: 'transparent', color: '#e2e2eb', border: '1px solid rgba(226,226,235,0.2)' }} onClick={() => setIsModalOpen(false)}>Cancel</button>
                 <button type="submit" className="btn btn-sm" style={{ background: '#4F46E5', color: '#fff', border: 'none' }}>Save Lead</button>

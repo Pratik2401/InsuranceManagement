@@ -67,6 +67,7 @@ CREATE TABLE leads (
     product VARCHAR(100),
     status ENUM('Open', 'Converted', 'Lost') DEFAULT 'Open',
     date DATE NOT NULL,
+    converted_policy_number VARCHAR(50) DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
@@ -96,7 +97,7 @@ CREATE TABLE policies (
     coverage_amount DECIMAL(15, 2) NOT NULL,
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,
-    status ENUM('active', 'expired', 'cancelled', 'pending') DEFAULT 'pending',
+    status ENUM('active', 'expired', 'cancelled', 'pending', 'pending_renewal') DEFAULT 'pending',
     is_renewal BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

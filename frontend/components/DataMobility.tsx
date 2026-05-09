@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useRef, useState } from 'react';
+import ExcelJS from 'exceljs';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -29,18 +30,94 @@ export function ExportDropdown({ data, columns, filename }: ExportDropdownProps)
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     if (!data.length) return;
-    // Map data based on columns
-    const mappedData = data.map(item => {
-      const row: any = {};
-      columns.forEach(c => { row[c.header] = item[c.key]; });
-      return row;
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Insurance Management';
+    workbook.created = new Date();
+
+    const worksheet = workbook.addWorksheet('Export', {
+      views: [{ state: 'frozen', ySplit: 4 }],
+      properties: { defaultRowHeight: 22 },
     });
-    const worksheet = XLSX.utils.json_to_sheet(mappedData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Data');
-    XLSX.writeFile(workbook, `${filename}_${new Date().toISOString().split('T')[0]}.xlsx`);
+
+    const exportTitle = filename.replace(/_/g, ' ').replace(/\b\w/g, (s) => s.toUpperCase());
+    const lastColumn = worksheet.getColumn(columns.length).letter;
+
+    worksheet.mergeCells(`A1:${lastColumn}1`);
+    worksheet.getCell('A1').value = `${exportTitle} Export`;
+    worksheet.getCell('A1').font = { name: 'Calibri', size: 16, bold: true, color: { argb: 'FFFFFFFF' } };
+    worksheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F46E5' } };
+    worksheet.getCell('A1').alignment = { vertical: 'middle', horizontal: 'left' };
+
+    worksheet.mergeCells(`A2:${lastColumn}2`);
+    worksheet.getCell('A2').value = 'Insurance Management System';
+    worksheet.getCell('A2').font = { name: 'Calibri', size: 11, color: { argb: 'FF6B7280' } };
+    worksheet.getCell('A2').alignment = { vertical: 'middle', horizontal: 'left' };
+
+    worksheet.mergeCells(`A3:${lastColumn}3`);
+    worksheet.getCell('A3').value = `Generated on ${new Date().toLocaleString()}`;
+    worksheet.getCell('A3').font = { name: 'Calibri', size: 10, italic: true, color: { argb: 'FF9CA3AF' } };
+    worksheet.getCell('A3').alignment = { vertical: 'middle', horizontal: 'left' };
+
+    const headerRowIndex = 4;
+    const headerRow = worksheet.getRow(headerRowIndex);
+    headerRow.height = 22;
+
+    columns.forEach((column, index) => {
+      const cell = headerRow.getCell(index + 1);
+      cell.value = column.header;
+      cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF111827' } };
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FF374151' } },
+        left: { style: 'thin', color: { argb: 'FF374151' } },
+        bottom: { style: 'thin', color: { argb: 'FF374151' } },
+        right: { style: 'thin', color: { argb: 'FF374151' } },
+      };
+    });
+
+    data.forEach((item, rowIndex) => {
+      const rowNumber = headerRowIndex + 1 + rowIndex;
+      const row = worksheet.getRow(rowNumber);
+      const fillColor = rowIndex % 2 === 0 ? 'FFF8FAFC' : 'FFFFFFFF';
+
+      columns.forEach((column, columnIndex) => {
+        const value = item[column.key];
+        const cell = row.getCell(columnIndex + 1);
+        cell.value = value instanceof Date ? value.toISOString().split('T')[0] : value ?? '';
+        cell.font = { name: 'Calibri', size: 10, color: { argb: 'FF1F2937' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fillColor } };
+        cell.alignment = { vertical: 'middle', horizontal: columnIndex === columns.length - 1 ? 'right' : 'left' };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          right: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+        };
+      });
+    });
+
+    worksheet.columns.forEach((column, index) => {
+      const header = columns[index].header;
+      const contentWidth = Math.max(
+        header.length,
+        ...data.map((item) => String(item[columns[index].key] ?? '').length)
+      );
+      column.width = Math.min(Math.max(contentWidth + 3, 14), 35);
+    });
+
+    worksheet.autoFilter = `A${headerRowIndex}:${lastColumn}${headerRowIndex}`;
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${filename}_${new Date().toISOString().split('T')[0]}.xlsx`;
+    anchor.click();
+    URL.revokeObjectURL(url);
     setOpen(false);
   };
 

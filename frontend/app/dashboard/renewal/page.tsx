@@ -19,7 +19,15 @@ export default function RenewalPage() {
     async function load() {
       try {
         const res = await api.get('/policies');
-        const policies = res.data.filter((p: any) => p.isRenewal === true);
+        console.log('All policies:', res.data);
+        const policies = res.data.filter((p: any) => {
+          // Handle boolean, string 'true', or numeric 1
+          const isRenewal = p.isRenewal === true || p.isRenewal === 'true' || p.isRenewal === 1 || String(p.isRenewal).toLowerCase() === 'true';
+          console.log(`Policy ${p.number}: isRenewal=${p.isRenewal} (resolved: ${isRenewal})`);
+          return isRenewal;
+        });
+
+        console.log('Filtered renewal policies:', policies);
 
         // Populate table records
         const formatted = policies.map((p: any) => ({
