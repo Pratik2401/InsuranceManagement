@@ -13,18 +13,19 @@ This repo is ready for a simple GitHub Actions deploy to an Ubuntu 22 Lightsail 
 
 1. Point the domain `snap2eat.in` to the Lightsail public IPv4 address `13.233.204.92`.
 2. SSH into the server as `ubuntu`.
-3. Install Node.js 18+ and Nginx.
-4. Create the deploy directory:
+3. Clone the repository onto the server and run the bootstrap script once to install Node.js, Nginx, MySQL, and PM2:
 
 ```bash
-sudo mkdir -p /var/www/snap2eat
-sudo chown -R ubuntu:ubuntu /var/www/snap2eat
+sudo mkdir -p /var/www
+sudo chown ubuntu:ubuntu /var/www
+git clone <your-repo-url> /var/www/snap2eat
+cd /var/www/snap2eat
+bash deploy/scripts/setup-server.sh
 ```
 
-5. Clone this repository into `/var/www/snap2eat` once, or let the first GitHub Actions deploy populate it.
-6. Create `backend/.env` on the server with your production values.
-7. Copy the Nginx config from `deploy/nginx/snap2eat.in.conf` into `/etc/nginx/sites-available/snap2eat.in` and enable it.
-8. Install PM2 once for the `ubuntu` user:
+4. Create `backend/.env` on the server with your production values.
+5. Copy the Nginx config from `deploy/nginx/snap2eat.in.conf` into `/etc/nginx/sites-available/snap2eat.in` and enable it.
+6. Install PM2 once for the `ubuntu` user:
 
 ```bash
 npx --yes pm2 startup systemd -u ubuntu --hp /home/ubuntu
@@ -52,5 +53,7 @@ Every push to `main` will:
 ## Notes
 
 - Keep `backend/.env` on the server, not in GitHub.
+- The bootstrap script installs MySQL Server and creates the `insurance_management` database plus a dedicated app user by default.
+- If you want to keep the default backend config, you can leave `DB_USER=root`, but a dedicated MySQL user is safer for production.
 - Uploaded policy PDFs are stored under `backend/uploads/` and are excluded from deploy syncs so they are not overwritten.
 - If you want HTTPS, add a Let’s Encrypt certificate after the Nginx site is working on port 80.
