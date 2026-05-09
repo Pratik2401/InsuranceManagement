@@ -42,6 +42,18 @@ fi
 
 if [[ -d "$APP_DIR/frontend/.next" ]]; then
   echo "Prebuilt frontend detected at $APP_DIR/frontend/.next — skipping build"
+  # Prefer Next standalone output so the server doesn't need to install deps.
+  if [[ -d "$APP_DIR/frontend/.next/standalone" ]]; then
+    echo "Detected Next standalone build (.next/standalone). Will run standalone server binary."
+    FRONTEND_MODE="standalone"
+  else
+    echo "No standalone build detected — ensuring frontend production deps are installed so 'next start' works"
+    FRONTEND_MODE="next-start"
+    if [[ ! -d "$APP_DIR/frontend/node_modules" ]]; then
+      echo "Installing frontend production dependencies (npm ci --omit=dev)"
+      sudo -u "$USER" npm ci --prefix "$APP_DIR/frontend" --omit=dev || true
+    fi
+  fi
 else
   echo "No prebuilt frontend found at $APP_DIR/frontend/.next"
   echo "Please build the frontend locally and upload the frontend/.next and public/ directories to the server. See DEPLOYMENT.md for rsync examples."
@@ -55,12 +67,22 @@ else
 fi
 
 echo "Starting/restarting frontend process with PM2"
-if [[ -d "$APP_DIR/frontend/.next" ]]; then
+if [[ "$FRONTEND_MODE" == "standalone" ]]; then
+  # Start the standalone server directly using node
+  if npx --yes pm2 describe snap2eat-frontend >/dev/null 2>&1; then
+    npx --yes pm2 restart snap2eat-frontend --update-env || true
+  else
+    npx --yes pm2 start node --name snap2eat-frontend --cwd "$APP_DIR/frontend" -- .next/standalone/server.js --update-env || true
+  fi
+elif [[ "$FRONTEND_MODE" == "next-start" ]]; then
   if npx --yes pm2 describe snap2eat-frontend >/dev/null 2>&1; then
     npx --yes pm2 restart snap2eat-frontend --update-env
   else
     npx --yes pm2 start npm --name snap2eat-frontend --cwd "$APP_DIR/frontend" -- start
   fi
+else
+  echo "Skipping frontend pm2 restart because no prebuilt frontend is present"
+fi
 else
   echo "Skipping frontend pm2 restart because no prebuilt frontend is present"
 fi

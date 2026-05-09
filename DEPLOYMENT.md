@@ -88,36 +88,54 @@ sudo bash /var/www/snap2eat/deploy/scripts/update-site.sh
 
 Uploading a prebuilt frontend from your development machine
 
-On your workstation, build the frontend normally:
+On your workstation, build the frontend normally. Recommended: enable Next's standalone output so the server does not need to run `npm ci`.
+
+1) Standalone build (recommended when you cannot run `npm ci` on the server)
+
+- In `frontend/next.config.ts` set:
+
+```ts
+export default {
+	output: 'standalone',
+	// other config...
+}
+```
+
+- Build locally and upload the standalone bundle plus static/public directories:
 
 ```bash
 cd frontend
 npm ci
 npm run build
+
+# From your local repo root, sync standalone and static files
+rsync -avz --delete frontend/.next/standalone/ ubuntu@13.233.204.92:/var/www/snap2eat/frontend/.next/standalone/
+rsync -avz --delete frontend/.next/static/ ubuntu@13.233.204.92:/var/www/snap2eat/frontend/.next/static/
+rsync -avz --delete frontend/public/ ubuntu@13.233.204.92:/var/www/snap2eat/frontend/public/
 ```
 
-Then upload the built artifacts to the server. The server expects `frontend/.next/` and `frontend/public/` to be present. Example using `rsync`:
+On the server `update-site.sh` will detect `.next/standalone` and start the frontend using the bundled server (`node .next/standalone/server.js`) so no `npm ci` is required.
+
+2) Regular prebuilt (if you prefer `next start` on the server)
+
+If you cannot use standalone, upload the `.next` and `public` dirs and then install production deps on the server before starting:
 
 ```bash
+cd frontend
+npm ci
+npm run build
+
 # From your local repo root
 rsync -avz --delete frontend/.next/ ubuntu@13.233.204.92:/var/www/snap2eat/frontend/.next/
 rsync -avz --delete frontend/public/ ubuntu@13.233.204.92:/var/www/snap2eat/frontend/public/
 rsync -avz frontend/package.json ubuntu@13.233.204.92:/var/www/snap2eat/frontend/package.json
+
+# then on server (if you can run npm ci)
+sudo -u ubuntu npm ci --prefix /var/www/snap2eat/frontend --omit=dev
 ```
 
 After uploading, on the server run:
 
 ```bash
 sudo bash /var/www/snap2eat/deploy/scripts/update-site.sh
-```
-
-Alternative: create a tarball locally and upload it, then instruct the update script to extract it using the `FRONTEND_TARBALL` env var:
-
-```bash
-# create tarball of built frontend
-tar -czf frontend-build.tgz -C frontend .next public
-scp frontend-build.tgz ubuntu@13.233.204.92:/tmp/
-
-# on the server, extract and run update
-sudo FRONTEND_TARBALL=/tmp/frontend-build.tgz bash /var/www/snap2eat/deploy/scripts/update-site.sh
 ```
